@@ -13,8 +13,21 @@
         }
     ],
     "system-settings": [
+        {
+            "key": "surveyauth_globaldebug",
+            "name": "Global - Debug Mode",
+            "type": "checkbox",
+            "repeatable": false
+        }
     ],
     "project-settings": [
+        {
+            "key": "surveyauth_debug",
+            "name": "Debug Mode",
+            "type": "checkbox",
+            "super-users-only": true,
+            "repeatable": false
+        }
     ],
     "compatibility": {
         "php-version-min": "5.4.0",
