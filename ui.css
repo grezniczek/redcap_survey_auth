@@ -1,0 +1,23 @@
+div.-PREFIX--ui {
+    margin-top: 10px;
+}
+div.-PREFIX--ui button {
+    margin: 5px;
+}
+div.-PREFIX--result {
+    font-weight: normal;
+    margin: 0 0 10px 5px;
+}
+.-PREFIX--patient {
+    font-weight: bold;
+    font-size: 110%;
+}
+.-PREFIX--mrn {
+    color: darkgray;
+    font-size: 90%;
+}
+.-PREFIX--input {
+    width: 200px !important;
+    height: 24px; 
+    margin-top: 4px;
+}

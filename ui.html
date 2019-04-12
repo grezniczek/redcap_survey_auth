@@ -1,0 +1,19 @@
+<template id="{PREFIX}-{GUID}-tpl">
+    <div id="{PREFIX}-{GUID}" class="{PREFIX}-ui" data-source="{SOURCE}" data-queryurl="{QUERYURL}" data-record="{RECORD}" data-map="{MAP}" data-dateformat="{DATEFORMAT}" {DEBUG}>
+        <div class="input-group">
+            <input type="text" name="{PREFIX}-{GUID}-input" id="{PREFIX}-{GUID}-input" class="x-form-text x-form-field {PREFIX}-input" style="display:none" />
+            <button id="{PREFIX}-{GUID}-check"
+                class="btn btn-xs btn-default"
+                disabled="disabled"
+                style="margin:5px">
+                Prüfen
+            </button>
+            <button type="button" id="{PREFIX}-{GUID}-copy"
+                class="btn btn-xs btn-default"
+                disabled="disabled">
+                Daten übernehmen
+            </button>
+        </div>
+        <div class="{PREFIX}-result" id="{PREFIX}-{GUID}-result">Bitte geben Sie eine Fallnummer ein und klicken Sie dann auf 'Prüfen'.</div>
+    </div>
+</template>

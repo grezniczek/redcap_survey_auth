@@ -1,0 +1,25 @@
+{
+    "name": "Survey Auth",
+    "namespace": "RUB\\SurveyAuthExternalModule",
+    "description": "Adds authentication to surveys. <strong><a href=\"https://github.com/grezniczek/redcap_custom_footer\">See full documentation here</a></strong>.",
+    "permissions": [
+        "redcap_survey_page_top"
+    ],
+    "authors": [
+        {
+            "name": "Günther Rezniczek",
+            "email": "guenther.rezniczek@rub.de",
+            "institution": "Ruhr-Universität Bochum"
+        }
+    ],
+    "system-settings": [
+    ],
+    "project-settings": [
+    ],
+    "compatibility": {
+        "php-version-min": "5.4.0",
+        "php-version-max": "",
+        "redcap-version-min": "8.1.0",
+        "redcap-version-max": ""
+     }
+}
