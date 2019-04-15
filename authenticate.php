@@ -4,21 +4,13 @@ namespace RUB\SurveyAuthExternalModule;
 
 class SurveyAuthenticator {
 
-    private $record;
-    private $debug = false;
-    private $em;
-    private $dateFormat = "d-m-Y";
-    private $supportedDateFormats = array("Y-m-d", "m-d-Y", "d-m-Y", "Y-m-d H:i", "m-d-Y H:i", "d-m-Y H:i", "Y-m-d H:i:s", "m-d-Y H:i:s", "d-m-Y H:i:s");
+    private $module;
+    private $settings;
 
-    function __construct($record, $dateFormat, $module)
+    function __construct($module)
     {
-        $this->record = $record;
-        $this->em = $module;
-        $this->debug = $module->getSystemSetting("patientfinder_globaldebug") || $module->getProjectSetting("patientfinder_debug");
-        // Date format.
-        if (in_array($dateFormat, $this->supportedDateFormats)) {
-            $this->dateFormat = $dateFormat;
-        }
+        $this->module = $module;
+        $this->settings = new SurveyAuthSettings($module);
     }
 
     public function Authenticate($username, $password) {
@@ -54,12 +46,12 @@ class SurveyAuthenticator {
 if (isset($module) &&  isset($module->IDENTITY) && $module->IDENTITY == "5a859937-929f-4434-9b35-f2905c193030") {
     // Get values from POSTed json.
      $json = file_get_contents("php://input");
-     $params = json_decode($json);
+     $data = json_decode($json, true);
      if (strlen($json) > 0 && json_last_error() == JSON_ERROR_NONE) {
-        // Initialize authenticator with the parameters.
-        $sa = new SurveyAuthenticator(trim($params["record"]), trim($params["dateFormat"]), $module);
         // Attempt authentication and print the result.
-        $response = $sa->Authenticate($username, $password);
+        $username = $data["username"];
+        $password = $data["password"];
+        $response = $module->authenticate($username, $password);
         print $response;
      }
      else {

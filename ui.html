@@ -1,19 +1,64 @@
-<template id="{PREFIX}-{GUID}-tpl">
-    <div id="{PREFIX}-{GUID}" class="{PREFIX}-ui" data-source="{SOURCE}" data-queryurl="{QUERYURL}" data-record="{RECORD}" data-map="{MAP}" data-dateformat="{DATEFORMAT}" {DEBUG}>
-        <div class="input-group">
-            <input type="text" name="{PREFIX}-{GUID}-input" id="{PREFIX}-{GUID}-input" class="x-form-text x-form-field {PREFIX}-input" style="display:none" />
-            <button id="{PREFIX}-{GUID}-check"
-                class="btn btn-xs btn-default"
-                disabled="disabled"
-                style="margin:5px">
-                Prüfen
-            </button>
-            <button type="button" id="{PREFIX}-{GUID}-copy"
-                class="btn btn-xs btn-default"
-                disabled="disabled">
-                Daten übernehmen
-            </button>
-        </div>
-        <div class="{PREFIX}-result" id="{PREFIX}-{GUID}-result">Bitte geben Sie eine Fallnummer ein und klicken Sie dann auf 'Prüfen'.</div>
-    </div>
+<style>
+    .{PREFIX}-failmsg {
+        margin-top: 20px;
+        color: red;
+    }
+</style>
+<template id="{PREFIX}-submit-normal-tpl">{SUBMITLABEL}</template>
+<template id="{PREFIX}-submit-busy-tpl">
+    <img src="data:image/gif;base64,R0lGODlhEAAQAMQAAP///+7u7t3d3bu7u6qqqpmZmYiIiHd3d2ZmZlVVVURERDMzMyIiIhEREQARAAAAAP///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQFBwAQACwAAAAAEAAQAAAFdyAkQgGJJOWoQgIjBM8jkKsoPEzgyMGsCjPDw7ADpkQBxRDmSCRetpRA6Rj4kFBkgLC4IlUGhbNQIwXOYYWCXDufzYPDMaoKGBoKb886OjAKdgZAAgQkfCwzAgsDBAUCgl8jAQkHEAVkAoA1AgczlyIDczUDA2UhACH5BAUHABAALAAAAAAPABAAAAVjICSO0IGIATkqIiMKDaGKC8Q49jPMYsE0hQdrlABCGgvT45FKiRKQhWA0mPKGPAgBcTjsspBCAoH4gl+FmXNEUEBVAYHToJAVZK/XWoQQDAgBZioHaX8igigFKYYQVlkCjiMhACH5BAUHABAALAAAAAAQAA8AAAVgICSOUGGQqIiIChMESyo6CdQGdRqUENESI8FAdFgAFwqDISYwPB4CVSMnEhSej+FogNhtHyfRQFmIol5owmEta/fcKITB6y4choMBmk7yGgSAEAJ8JAVDgQFmKUCCZnwhACH5BAUHABAALAAAAAAQABAAAAViICSOYkGe4hFAiSImAwotB+si6Co2QxvjAYHIgBAqDoWCK2Bq6A40iA4yYMggNZKwGFgVCAQZotFwwJIF4QnxaC9IsZNgLtAJDKbraJCGzPVSIgEDXVNXA0JdgH6ChoCKKCEAIfkEBQcAEAAsAAAAABAADgAABUkgJI7QcZComIjPw6bs2kINLB5uW9Bo0gyQx8LkKgVHiccKVdyRlqjFSAApOKOtR810StVeU9RAmLqOxi0qRG3LptikAVQEh4UAACH5BAUHABAALAAAAAAQABAAAAVxICSO0DCQKBQQonGIh5AGB2sYkMHIqYAIN0EDRxoQZIaC6bAoMRSiwMAwCIwCggRkwRMJWKSAomBVCc5lUiGRUBjO6FSBwWggwijBooDCdiFfIlBRAlYBZQ0PWRANaSkED1oQYHgjDA8nM3kPfCmejiEAIfkEBQcAEAAsAAAAABAAEAAABWAgJI6QIJCoOIhFwabsSbiFAotGMEMKgZoB3cBUQIgURpFgmEI0EqjACYXwiYJBGAGBgGIDWsVicbiNEgSsGbKCIMCwA4IBCRgXt8bDACkvYQF6U1OADg8mDlaACQtwJCEAIfkEBQcAEAAsAAABABAADwAABV4gJEKCOAwiMa4Q2qIDwq4wiriBmItCCREHUsIwCgh2q8MiyEKODK7ZbHCoqqSjWGKI1d2kRp+RAWGyHg+DQUEmKliGx4HBKECIMwG61AgssAQPKA19EAxRKz4QCVIhACH5BAUHABAALAAAAAAQABAAAAVjICSOUBCQqHhCgiAOKyqcLVvEZOC2geGiK5NpQBAZCilgAYFMogo/J0lgqEpHgoO2+GIMUL6p4vFojhQNg8rxWLgYBQJCASkwEKLC17hYFJtRIwwBfRAJDk4ObwsidEkrWkkhACH5BAUHABAALAAAAQAQAA8AAAVcICSOUGAGAqmKpjis6vmuqSrUxQyPhDEEtpUOgmgYETCCcrB4OBWwQsGHEhQatVFhB/mNAojFVsQgBhgKpSHRTRxEhGwhoRg0CCXYAkKHHPZCZRAKUERZMAYGMCEAIfkEBQcAEAAsAAABABAADwAABV0gJI4kFJToGAilwKLCST6PUcrB8A70844CXenwILRkIoYyBRk4BQlHo3FIOQmvAEGBMpYSop/IgPBCFpCqIuEsIESHgkgoJxwQAjSzwb1DClwwgQhgAVVMIgVyKCEAIfkECQcAEAAsAAAAABAAEAAABWQgJI5kSQ6NYK7Dw6xr8hCw+ELC85hCIAq3Am0U6JUKjkHJNzIsFAqDqShQHRhY6bKqgvgGCZOSFDhAUiWCYQwJSxGHKqGAE/5EqIHBjOgyRQELCBB7EAQHfySDhGYQdDWGQyUhADs=" alt="..." />
 </template>
+<div id="surveytitlelogo">
+    <table cellspacing="0" style="width:100%;max-width:100%;">
+        <tbody>
+            <tr>
+                <td valign="top">
+                    <h1 id="surveytitle">{SURVEYTITLE}</h1>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+<div id="surveyinstructions">{INSTRUCTIONS}</div>
+<form id="form" name="form" data-queryurl="{QUERYURL}" {DEBUG}>
+    <div>
+        <table role="presentation" class="form_border container-fluid" style="display:table;" id="questiontable">
+            <tbody class="formtbody">
+                <tr>
+                    <td class="labelrc questionnum col-1" valign="top"></td>
+                    <td class="labelrc col-6">
+                        <label class="fl" for="{PREFIX}-username" id="{PREFIX}-label-username" aria-hidden="true">{USERNAMELABEL}</label>
+                    </td>
+                    <td class="data col-5">
+                        <input autocomplete="username" autofocus aria-labelledby="{PREFIX}-label-username" class="x-form-text x-form-field" type="text" name="{PREFIX}-username" id="{PREFIX}-username" value="" tabindex="0"/>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="labelrc questionnum col-1" valign="top"></td>
+                    <td class="labelrc col-6">
+                        <label class="fl" id="{PREFIX}-label-password" for="{PREFIX}-password" aria-hidden="true">{PASSWORDLABEL}</label>
+                    </td>
+                    <td class="data col-5">
+                        <input autocomplete="new-password" aria-labelledby="{PREFIX}-label-password" class="x-form-text x-form-field" type="{PREFIX}-password" name="{PREFIX}-password" id="{PREFIX}-password" value="" tabindex="0" />
+                    </td>
+                </tr>
+                <tr class="surveysubmit">
+                    <td class="labelrc col-12" style="padding:5px;" colspan="3">
+                        <table cellspacing="0">
+                            <tbody>
+                                <tr>
+                                    <td colspan="2" style="text-align:center;padding:15px 0;">
+                                        <button id="{PREFIX}-submit" tabindex="0" class="jqbutton nowrap ui-button ui-corner-all ui-widget" style="color:#800000;width:100%;max-width:140px;" onclick="RUBSurveyAuth.verify('{PREFIX}'); return false;">
+                                            {SUBMITLABEL}
+                                        </button>
+                                        <div id="{PREFIX}-failmsg" class="{PREFIX}-failmsg" style="display: none">{FAILMSG}</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</form>

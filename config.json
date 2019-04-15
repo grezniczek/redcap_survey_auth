@@ -27,7 +27,47 @@
             "type": "checkbox",
             "super-users-only": true,
             "repeatable": false
+        },
+        {
+            "key": "surveyauth_token",
+            "name": "API Token",
+            "type": "text",
+            "required": true,
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_text",
+            "name": "Text displayed above username/password fields (default: 'Login is required to continue.')",
+            "type": "textara",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_usernamelabel",
+            "name": "Username label (default = 'Username')",
+            "type": "text",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_passwordlabel",
+            "name": "Password label (default = 'Password')",
+            "type": "text",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_submitlabel",
+            "name": "Password label (default = 'Submit')",
+            "type": "text",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_failmsg",
+            "name": "Fail message (default = 'Invalid username and/or password or access denied.')",
+            "type": "text",
+            "repeatable": false
         }
+    ],
+    "no-auth-pages": [
+        "authenticate"
     ],
     "compatibility": {
         "php-version-min": "5.4.0",
