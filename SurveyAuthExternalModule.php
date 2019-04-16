@@ -1,6 +1,6 @@
 <?php
-
 namespace RUB\SurveyAuthExternalModule;
+
 
 use ExternalModules\AbstractExternalModule;
 
@@ -18,11 +18,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     {
         // Need to call parent constructor first!
         parent::__construct();
-
-        // Parse module settings into a convenience object (only in project scope).
-        if (isset($GLOBALS["project_id"])) {
-            $this->settings = new SurveyAuthSettings($this);
-        }
+        // Initialize settings.
+        $this->settings = new SurveyAuthSettings($this);
     }
 
     /**
@@ -38,6 +35,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $taggedFields = $this->getTaggedFields($dd);
         // There must be at most one tagged field.
         $tf = count($taggedFields) === 1 ? $taggedFields[0] : null;
+        // If there is nothing to do simply return.
         if ($tf == null) return;
 
         // Check if $record is defined. If not, then authentication needs to be performed.
@@ -46,6 +44,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $jsUrl = $this->getUrl("surveyauth.js");
             print "<script type=\"text/javascript\" src=\"{$jsUrl}\"></script>";
             $queryUrl = $this->getUrl("authenticate.php", true);
+            $blob = $this->toSecureBlob(array(
+                "project_id" => $project_id,
+                "group_id" => $group_id,
+                "instrument" => $instrument,
+                "event_id" => $event_id,
+                "repeat_instance" => $repeat_instance
+            ));
             $template = file_get_contents(dirname(__FILE__)."/ui.html");
             $replace = array(
                 "{GUID}" => $tf->guid,
@@ -57,21 +62,153 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "{PASSWORDLABEL}" => $this->settings->passwordlabel,
                 "{SUBMITLABEL}" => $this->settings->submitlabel,
                 "{FAILMSG}" => $this->settings->failmsg,
+                "{BLOB}" => $blob,
                 "{DEBUG}" => $this->settings->debug ? " data-debug=\"1\"" : ""
             );
             print str_replace(array_keys($replace), array_values($replace), $template);
-
+            // No further processing (i.e. do not let REDCap render the survey page).
             $this->exitAfterHook();
-/*
-            // For now, assume authentication has succeded
-            // Add a new record.
+        }
+        else {
+            // Having a record means that authentication has succeded.
+            // Thus, there is nothing to do.
+        }
+    }
+
+    private $cipher = "AES-256-CBC";
+
+    /**
+     * Helper function to package an array into an encrytped blob (base64-encoded).
+     * $data is expected to be an associative array.
+     */
+    private function toSecureBlob($data)
+    {
+        $jsonData = json_encode($data);
+        $key = base64_decode($this->settings->blobSecret);
+        $ivLen = openssl_cipher_iv_length($this->cipher);
+        $iv = openssl_random_pseudo_bytes($ivLen);
+        $aesData = openssl_encrypt($jsonData, $this->cipher, $key, OPENSSL_RAW_DATA, $iv);
+        $hmac = hash_hmac('sha256', $aesData, $this->settings->blobHmac, true);
+        $blob = base64_encode($iv.$hmac.$aesData);
+        return $blob;
+    }
+
+    /**
+     * Helper function to decode an encrypted data blob.
+     * Retruns an associative array or null if there was a problem.
+     */
+    private function fromSecureBlob($blob) 
+    {
+        $raw = base64_decode($blob);
+        $key = base64_decode($this->settings->blobSecret);
+        $ivlen = openssl_cipher_iv_length($this->cipher);
+        $iv = substr($raw, 0, $ivlen);
+        $blobHmac = substr($raw, $ivlen, 32);
+        $aesData = substr($raw, $ivlen + 32);
+        $jsonData = openssl_decrypt($aesData, $this->cipher, $key, OPENSSL_RAW_DATA, $iv);
+        $calcHmac = hash_hmac('sha256', $aesData, $this->settings->blobHmac, true);
+        // Only return data if the hashes match.
+        return hash_equals($blobHmac, $calcHmac) ? json_decode($jsonData, true) : null;
+    }
+
+    /**
+     * A helper function that extracts parts of the data dictionary with the module's action tag.
+     */
+    private function getTaggedFields($dataDictionary) 
+    {
+        $fields = array();
+        foreach ($dataDictionary as $fieldInfo) {
+            if (strpos($fieldInfo->field_annotation, SurveyAuthExternalModule::$ACTIONTAG)) {
+                array_push($fields, new SurveyAuthInfo($fieldInfo, $dataDictionary));
+            }
+        }
+        return $fields;
+    }
+
+
+    /**
+     * Determines, whether the credentials are valid.
+     */
+    function authenticate($username, $password, $blob) 
+    {
+        $result = array (
+            "success" => false,
+            "username" => $username,
+            "email" => null,
+            "fullname" => null,
+            "error" => null,
+        );
+        $record_id = null;
+
+        do {
+            // Retrieve transferred data.
+            $data = $this->fromSecureBlob($blob);
+            if ($data == null) {
+                $result["error"] = "Failed to decrypt blob.";
+                break;
+            }
+            // Verify project id.
+            $project_id = $data["project_id"];
+            if ($project_id != $GLOBALS["project_id"]) {
+                $result["error"] = "Project ID mismatch.";
+                break;
+            }
+            // Check credentials.
+            // First, let's see if the whitelist is active.
+            if ($this->settings->useWhitelist && !in_array($username, $this->settings->whitelist)) {
+                break;
+            }
+            // Check custom credentials if enabled.
+            if (!$result["success"] && $this->settings->useCustom) {
+                $this->authenticateCustom($username, $password, $result);
+            }
+            // Check REDCap table-based users.
+            if (!$result["success"] && $this->settings->useTable) {
+                $this->authenticateTable($username, $password, $result);
+            }
+            // Check LDAP.
+            if (!$result["success"] && $this->settings->useLDAP) {
+                 $this->authenticateLDAP($username, $password, $result);
+            }
+            // Check other LDAP.
+            if (!$result["success"] && $this->settings->useOtherLDAP) {
+                $this->authenticateOtherLDAP($username, $password, $result);
+            }
+            if (!$result["success"]) {
+                if (!$this->settings->debug || !strlen($result["error"])) {
+                    $result["error"] = "Bad username / password.";
+                }
+                break;
+            }
+
+            // Get data from data dictionary.
+            $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $data["instrument"], false));
+            $taggedFields= $this->getTaggedFields($dd);
+            if (count($taggedFields) != 1) {
+                $result["error"] = "Could not find a tagged field.";
+                break;
+            }
+            $tf = $taggedFields[0];
+            // Verify token exists.
+            $token = $this->settings->token;
+            if (!strlen($token)) {
+                $result["error"] = "API token missing.";
+                break;
+            }
+
+            // Add a new record and set data.
             $apiUrl = APP_PATH_WEBROOT_FULL . "api/";
             $recordIdField = \REDCap::getRecordIdField();
-            $payload = array(array(
-                "{$recordIdField}" => "new-{$tf->guid}",
-                "{$tf->successField}" => "{$tf->successValue}"
-            )); 
-            $payloadJson = json_encode($payload);
+            $guid = SurveyAuthInfo::GUID();
+            $result["timestamp"] = date($tf->dateFormat);
+            $payload = array();
+            $payload[$recordIdField] = "new-{$guid}";
+            if (strlen($tf->successField)) $payload[$tf->successField] = $tf->successValue;
+            // Add mapped data items.
+            foreach ($tf->map as $k => $v) {
+                if (strlen($tf->map[$k])) $payload[$v] = $result[$k];
+            }
+            $payloadJson = json_encode(array($payload));
             $request = array(
                 'token' => $token,
                 'content' => 'record',
@@ -96,55 +233,24 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request, '', '&'));
             $responseJson = curl_exec($ch);
             curl_close($ch);
-
-            $response = json_decode($responseJson);
-            $recordId = $response[0];
-            $link = \REDCap::getSurveyLink($recordId, $instrument, $event_id, $repeat_instance);
-*/
-        }
-        else {
-            // Having a record means that authentication has succeded.
-        }
-
-
-
-
-//        $response = \REDCap::saveData($project_id, 'json', '{ "login": 1 }');
-
-    }
-
-    /**
-     * A helper function that extracts parts of the data dictionary with the module's action tag.
-     */
-    private function getTaggedFields($dataDictionary) 
-    {
-        $fields = array();
-        foreach ($dataDictionary as $fieldInfo) {
-            if (strpos($fieldInfo->field_annotation, SurveyAuthExternalModule::$ACTIONTAG)) {
-                array_push($fields, new SurveyAuthInfo($fieldInfo, $dataDictionary));
+            $response = json_decode($responseJson, true);
+            if (isset($response["error"])) {
+                $result["error"] = $response["error"];
+                break;
             }
-        }
-        return $fields;
-    }
+            $record_id = $response[0];
+            $link = \REDCap::getSurveyLink($record_id, $data["instrument"], $data["event_id"], $data["repeat_instance"]);
+            // We came to here, so all was good.
+            $result["success"] = true;
+        } while (false);
 
-
-    /**
-     * Determines, whether the credentials are valid.
-     */
-    function authenticate($username, $password) 
-    {
-        $success = true;
-        $error = "";
-        $record = null;
-
-        if ($success) {
-
-            // Write the log entry.
+        // Write a log entry.
+        if ($this->settings->log == "all" || ($this->settings->log == "fail" && !$result["success"]) || ($this->settings->log == "success" && $result["success"])) {
             $logData = array(
                 "action_description" => "SurveyAuth: Performed authentication operation for '{$username}'",
-                "changes_made" => $success ? "Successful" : "Failed/Denied",
-                "sql" => null,
-                "record" => $record,
+                "changes_made" => $result["success"] ? "Successful" : "Failed/Denied",
+                "sql" => $result["error"],
+                "record" => $record_id,
                 "event" => null,
                 "project_id" => $GLOBALS["project_id"]
             );
@@ -153,20 +259,300 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
         // Prepare response.
         $json = array(
-            "success" => $success
+            "success" => $result["success"]
         );
-        if ($success) {
-            $json["target"] = "https://www.google.de";
+        if ($result["success"]) {
+            $json["target"] = $link;
         }
         else {
-            $json["error"] = $error;
+            $json["error"] = $result["error"];
+        }
+        if ($this->settings->debug) {
+            $json["auth_result"] = $result;
         }
 
         // Return response as JSON.
         return json_encode($json);
     }
-}
 
+
+    private function authenticateTable($username, $password, &$result)
+    {
+        try {
+            if (\Authentication::verifyTableUsernamePassword($username, $password)) {
+                $result["success"] = true;
+                try {
+                    $ui = \User::getUserInfo($username);
+                    $result["email"] = $ui["user_email"];
+                    $result["fullname"] = trim("{$ui["user_firstname"]} {$ui["user_lastname"]}");
+                    throw new \Exception("Test");
+                }
+                catch (\Exception $e) {
+                    $result["error"] = $e->getMessage();
+                }
+            }
+        }
+        catch (\Exception $e) {
+            $result["error"] = $e->getMessage();
+        }
+    }
+
+    private function authenticateCustom($username, $password, &$result)
+    {
+        if (isset($this->settings->customCredentials[$username]) && $this->settings->customCredentials[$username] == $password) {
+            $result["success"] = true;
+        }
+    }
+
+    private function authenticateLDAP($username, $password, &$result) 
+    {
+        $config = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : null;
+        if ($config) {
+            $this->doLDAPauth($username, $password, $config, $result);
+        }
+        else {
+            $result["error"] = "REDCap LDAP not available.";
+        }
+    }
+
+    private function authenticateOtherLDAP($username, $password, &$result) 
+    {
+        $errors = array();
+        if (count($this->settings->otherLDAPConfigs) < 1) {
+            $result["error"] = "No Other LDAP configuraations available.";
+        }
+        foreach ($this->settings->otherLDAPConfigs as $config) {
+            $this->doLDAPauth($username, $password, $config, $result);
+            if (strlen($result["error"])) array_push($errors, $result["error"]);
+            $result["error"] = null;
+            if ($result["success"]) break;
+        }
+        $result["error"] = join("\n", $errors);
+    }
+
+    private function doLDAPauth($username, $password, $config, &$result) 
+    {
+        // As we rely on the ldap module, check that it has been loaded.
+        if (!extension_loaded("ldap")) {
+            $result["error"] = "LDAP extension not loaded.";
+            return;
+        }
+        $config = $this->mergeLDAPConfig($config);
+        try {
+            // Connect to LDAP server.
+            $ldap = ldap_connect($config["url"], $config["port"]);
+            if ($ldap === false) {
+                 throw new \Exception("Failed to connect to LDAP server.");
+            }
+            // Check version and TLS.
+            if (is_numeric($config["version"]) && $config["version"] > 2) {
+                @ldap_set_option($ldap, LDAP_OPT_PROTOCOL_VERSION, $config["version"]);
+                if (isset($config["start_tls"]) && $config["start_tls"]) {
+                    if (@ldap_start_tls($ldap) === false) {
+                        throw new \Exception("Could not start TLS session.");
+                    }
+                }
+            }
+            // Switch referrals.
+            if (isset($config["referrals"]) && is_bool($config["referrals"])) {
+                if (@ldap_set_option($ldap, LDAP_OPT_REFERRALS, $config["referrals"]) === false) {
+                    throw new \Exception("Could not change LDAP referral options");
+                }
+            }
+            // Bind with credentials or anonymously.
+            if (strlen($config['binddn']) && strlen($config['bindpw'])) {
+                if (@ldap_bind($ldap, $config["binddn"], $config["bindpw"]) === false) {
+                    throw new \Exception("LDAP bind with credentials failed.");
+                }
+            } 
+            else {
+                if (@ldap_bind($ldap) === false) {
+                    throw new \Exception("Anonymous LDAP bind failed.");
+                }
+            }
+            $this->checkBaseDN($ldap, $config);
+            // UTF8 Encode username for LDAPv3.
+            if (@ldap_get_option($ldap, LDAP_OPT_PROTOCOL_VERSION, $version) && $version == 3) {
+                $username = utf8_encode($username);
+            }
+            // Prepare search filter.
+            $filter = sprintf("(&(%s=%s)%s)", $config['userattr'], $this->quoteFilterString($username), $config['userfilter']);
+            $searchBasedn = $config["userdn"];
+            // Prepare search base dn.
+            $searchBasedn = $config["userdn"];
+            if ($searchBasedn != "" && substr($searchBasedn, -1) != ",") {
+                $searchBasedn .= ",";
+            }
+            $searchBasedn .= $config["basedn"];
+            $searchAttributes = $config["attributes"];
+            // Assemble parameters and determine function to use.
+            $funcParams = array($ldap, $searchBasedn, $filter, $searchAttributes);
+            $searchFunc = array(
+                "one" => "ldap_list",
+                "base" => "ldap_read",
+                "sub" => "ldap_search"
+            );
+            $scope = isset($config["userscope"]) && in_array($config["userscope"], array_keys($searchFunc), true) ? $config["userscope"] : "sub";
+            $searchFunc = $searchFunc[$scope];
+
+            // Search.
+
+            if (($resultId = @call_user_func_array($searchFunc, $funcParams)) === false) {
+                // User not found.
+            } 
+            elseif (@ldap_count_entries($ldap, $resultId) >= 1) { 
+                $first = true;
+                $entryId = null;
+                do {
+                    // Get the user dn.
+                    if ($first) {
+                        $entryId = @ldap_first_entry($ldap, $resultId);
+                        $first = false;
+                    } 
+                    else {
+                        $entryId = @ldap_next_entry($ldap, $entryId);
+                        if ($entryId === false)
+                            break;
+                    }
+                    $userDn  = @ldap_get_dn($ldap, $entryId);
+                    // Get attributes.
+                    if ($attributes = @ldap_get_attributes($ldap, $entryId)) {
+                        if (is_array($attributes) && count($attributes) > 0) {
+                            // Extract data.
+                            $lastname = (isset($attributes["sn"]) && $attributes["sn"]["count"] >= 1) ? $attributes["sn"][0] : "";
+                            $firstname = (isset($attributes["givenName"]) && $attributes["givenName"]["count"] >= 1) ? $attributes["givenName"][0] : "";
+                            $fullname = trim("{$firstname} {$lastname}");
+                            $email = (isset($attributes["email"]) && $attributes["email"]["count"] >= 1) ? $attributes["email"][0] : "";
+                            if (!strlen($email)) $email = (isset($attributes["mail"]) && $attributes["mail"]["count"] >= 1) ? $attributes["mail"][0] : "";
+                            if (strlen($email)) $result["email"] = strtolower($email);
+                            if (strlen($fullname)) $result["fullname"] = $fullname;
+                        }
+                    }
+                    @ldap_free_result($resultId);
+                    // Beware of empty passwords!
+                    if ($password != "") {
+                        // Try binding with the supplied user credentials.
+                        if (@ldap_bind($ldap, $userDn, $password)) {
+                            // Check group if appropiate
+                            if (strlen($config["group"])) {
+                                // Check type of memberattr (dn or username).
+                                $inGroup = $this->checkGroup($ldap, $config, ($config['memberisdn']) ? $userDn : $username);
+                                $result["success"] = $inGroup;
+                                break;
+                            } 
+                            else {
+                                $result["success"] = true;
+                                break;
+                            }
+                        }
+                    }
+                } while (true); // ($config['try_all'] == true); 
+            }
+            @ldap_unbind($ldap);
+        }
+        catch (\Exception $e) {
+            $result["error"] = "LDAP error: " . $e->getMessage();
+        }
+        finally {
+            @ldap_close($ldap);
+        }
+    }
+
+    private function checkBaseDN($ldap, &$config) 
+    {
+        if (!isset($config["basedn"])) $config["basedn"] = "";
+        if ($config["basedn"] == "") {
+            $result_id = @ldap_read($ldap, "", "(objectclass=*)", array("namingContexts"));
+            if (@ldap_count_entries($ldap, $result_id) == 1) {
+                $entry_id = @ldap_first_entry($ldap, $result_id);
+                $attrs = @ldap_get_attributes($ldap, $entry_id);
+                $basedn = $attrs['namingContexts'][0];
+                if ($basedn != "") {
+                    $config["basedn"] = $basedn;
+                }
+            }
+            @ldap_free_result($result_id);
+        }
+        if ($config["basedn"] == "") {
+            throw new \Exception("LDAP search base not specified.");
+        }
+    }
+
+    /**
+     * Escapes LDAP filter special characters as defined in RFC 2254.
+     */
+    private function quoteFilterString($raw)
+    {
+        $search = array('\\', '*', '(', ')', "\x00");
+        $replace = array('\\\\', '\*', '\(', '\)', "\\\x00");
+        return str_replace($search, $replace, $raw);
+    }
+    
+    private function mergeLDAPConfig($config)
+    {
+        $defaultConfig = array(
+            "url" => "",
+            "host" => 'localhost',
+            "port" => '389',
+            "version" => 2,
+            "referrals" => true,
+            "binddn" => "",
+            "bindpw" => "",
+            "basedn" => "",
+            "userdn" => "",
+            "userscope" => "sub",
+            "userattr" => "uid",
+            "userfilter" => "(objectClass=posixAccount)",
+            "attributes" => array(""), 
+            "group" => "",
+            "groupdn" => "",
+            "groupscope" => "sub",
+            "groupattr" => "cn",
+            "groupfilter" => "(objectClass=groupOfUniqueNames)",
+            "memberattr" => "uniqueMember",
+            "memberisdn" => true,
+            "start_tls" => false,
+            "debug" => false,
+            "try_all" => false
+        );
+        foreach ($config as $k => $v) {
+            $defaultConfig[$k] = $v;
+        }
+        return $defaultConfig;
+    }
+
+    private function checkGroup($ldap, $config, $user)
+    {
+        // Make filter.
+        $filter = sprintf("(&(%s=%s)(%s=%s)%s)", $config["groupattr"], $config["group"], $config["memberattr"], $this->quoteFilterString($user), $config["groupfilter"]);
+        // Make search base dn,
+        $searchBasedn = $config["groupdn"];
+        if ($searchBasedn != "" && substr($searchBasedn, -1) != ",") {
+            $searchBasedn .= ",";
+        }
+        $searchBasedn .= $config["basedn"];
+
+        // Assemble parameters and determine function to use.
+        $funcParams = array($ldap, $searchBasedn, $filter, array($config["memberattr"]));
+        $searchFunc = array(
+            "one" => "ldap_list",
+            "base" => "ldap_read",
+            "sub" => "ldap_search"
+        );
+        $scope = isset($config["groupscope"]) && in_array($config["groupscope"], array_keys($searchFunc), true) ? $config["groupscope"] : "sub";
+        $searchFunc = $searchFunc[$scope];
+
+        // Search.
+        if (($resultId = @call_user_func_array($searchFunc, $funcParams)) != false) {
+            if (@ldap_count_entries($ldap, $resultId) == 1) {
+                @ldap_free_result($resultId);
+                return true;
+            }
+        }
+        // User is not a member of the group.
+        return false;
+    }
+}
 
 /**
  * A helper class that holds settings info for this external module.
@@ -174,31 +560,98 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 class SurveyAuthSettings 
 {
     public $debug;
+    public $log;
     public $token;
     public $text;
     public $usernamelabel;
     public $passwordlabel;
     public $submitlabel;
     public $failmsg;
+    public $blobSecret;
+    public $blobHmac;
+    public $isProject;
+    public $useTable;
+    public $useLDAP;
+    public $useOtherLDAP;
+    public $useCustom;
+    public $customCredentials;
+    public $otherLDAPConfigs;
+    public $useWhitelist;
+    public $whitelist;
+
     private $m;
 
     function __construct($module) 
     {
         $this->m = $module;
         $this->debug = $module->getSystemSetting("surveyauth_globaldebug") || $module->getProjectSetting("surveyauth_debug");
-        $this->token = $module->getProjectSetting("surveyauth_token");
 
-        $this->text = $this->getValue("surveyauth_text", "Login is required to continue.");
-        $this->usernamelabel = $this->getValue("surveyauth_usernamelabel", "Username");
-        $this->passwordlabel = $this->getValue("surveyauth_passwordlabel", "Password");
-        $this->submitlabel = $this->getValue("surveyauth_submitlabel", "Submit");
-        $this->failmsg = $this->getValue("surveyauth_failmsg", "Invalid username and/or password or access denied.");
+        // Get or generate a secrets to encrypt payloads.
+        $this->blobSecret = $module->getSystemSetting("surveyauth_blobsecret");
+        if (!strlen($this->blobSecret)) {
+            $this->blobSecret = $this->genKey(32);
+            $module->setSystemSetting("surveyauth_blobsecret", $this->blobSecret);
+        }
+        $this->blobHmac = $module->getSystemSetting("surveyauth_blobhmac");
+        if (!strlen($this->blobHmac)) {
+            $this->blobHmac = $this->genKey(32);
+            $module->setSystemSetting("surveyauth_blobhmac", $this->blobHmac);
+        }
+        $this->isProject = isset($GLOBALS["project_id"]);
+        // Only in the context of a project
+        if ($this-isProject) {
+            $this->log = $this->getValue("surveyauth_log", "all");
+            $this->token = $this->getValue("surveyauth_token", null);
+            $this->text = $this->getValue("surveyauth_text", "Login is required to continue.");
+            $this->usernamelabel = $this->getValue("surveyauth_usernamelabel", "Username");
+            $this->passwordlabel = $this->getValue("surveyauth_passwordlabel", "Password");
+            $this->submitlabel = $this->getValue("surveyauth_submitlabel", "Submit");
+            $this->failmsg = $this->getValue("surveyauth_failmsg", "Invalid username and/or password or access denied.");
+            $this->useTable = $this->getValue("surveyauth_usetable", false);
+            $this->useLDAP = $this->getValue("surveyauth_useldap", false);
+            $this->useOtherLDAP = $this->getValue("surveyauth_useotherldap", false);
+            $this->useCustom = $this->getValue("surveyauth_usecustom", false);
+            $this->otherLDAPConfigs = json_decode($this->getValue("surveyauth_otherldap", "[]"), true);
+            if (!is_array($this->otherLDAPConfigs)) $this->otherLDAPConfigs = array();
+            $this->customCredentials = $this->parseCustomCredentials($this->getValue("surveyauth_custom", ""));
+            $this->useWhitelist = $this->getValue("surveyauth_usewhitelist", false);
+            $this->whitelist = $this->parseWhitelist($this->getValue("surveyauth_whitelist", ""));
+        }
+    }
+
+    private function genKey($keySize) {
+        $key = openssl_random_pseudo_bytes($keySize);
+        return base64_encode($key);
     }
 
     private function getValue($name, $default) 
     {
         $value = $this->m->getProjectSetting($name);
         return strlen($value) ? $value : $default;
+    }
+
+    private function parseCustomCredentials($raw) 
+    {
+        $creds = array();
+        $lines = explode("\n", $raw);
+        foreach ($lines as $line) {
+            $parts = explode(":", $line);
+            if (count($parts) > 1) {
+                $creds[$parts[0]] = join(":", array_slice($parts, 1));
+            }
+        }
+        return $creds;
+    }
+
+    private function parseWhitelist($raw) 
+    {
+        $whitelist = array();
+        $lines = explode("\n", $raw);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (strlen($line)) array_push($whitelist, $line);
+        }
+        return $whitelist;
     }
 }
 
@@ -213,7 +666,7 @@ class SurveyAuthInfo
     public $successField;
     public $successValue;
     public $map = array();
-    public $dateFormat = "dmy";
+    public $dateFormat = "Y-m-d";
 
     private $ALLOWEDMAPPINGS = array("success", "username", "email", "fullname", "timestamp");
 
@@ -247,15 +700,21 @@ class SurveyAuthInfo
             foreach($dd as $f) {
                 if ($f->field_name == $this->map["timestamp"] && $f->field_type == "text") {
                     switch($f->text_validation_type_or_show_slider_number) {
-                        case "date_ymd": $this->dateFormat = "Y-m-d"; break;
-                        case "date_mdy": $this->dateFormat = "m-d-Y"; break;
-                        case "date_dmy": $this->dateFormat = "d-m-Y"; break;
-                        case "datetime_ymd": $this->dateFormat = "Y-m-d H:i"; break;
-                        case "datetime_mdy": $this->dateFormat = "m-d-Y H:i"; break;
-                        case "datetime_dmy": $this->dateFormat = "d-m-Y H:i"; break;
-                        case "datetime_seconds_ymd": $this->dateFormat = "Y-m-d H:i:s"; break;
-                        case "datetime_seconds_mdy": $this->dateFormat = "m-d-Y H:i:s"; break;
-                        case "datetime_seconds_dmy": $this->dateFormat = "d-m-Y H:i:s"; break;
+                        case "date_ymd":
+                        case "date_mdy":
+                        case "date_dmy":
+                            $this->dateFormat = "Y-m-d";
+                             break;
+                        case "datetime_ymd":
+                        case "datetime_mdy":
+                        case "datetime_dmy":
+                            $this->dateFormat = "Y-m-d H:i"; 
+                            break;
+                        case "datetime_seconds_ymd":
+                        case "datetime_seconds_mdy":
+                        case "datetime_seconds_dmy":
+                            $this->dateFormat = "Y-m-d H:i:s"; 
+                            break;
                     }
                     break;
                 }
@@ -278,7 +737,7 @@ class SurveyAuthInfo
     /**
      * Generates a GUID in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.
      */
-    private static function GUID() 
+    public static function GUID() 
     {
         if (function_exists('com_create_guid') === true) {
             return strtolower(trim(com_create_guid(), '{}'));
