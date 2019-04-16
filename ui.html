@@ -20,7 +20,7 @@
     </table>
 </div>
 <div id="surveyinstructions">{INSTRUCTIONS}</div>
-<form id="form" name="form" data-queryurl="{QUERYURL}" {DEBUG}>
+<form id="form" name="form" data-queryurl="{QUERYURL}" data-blob="{BLOB}" {DEBUG}>
     <div>
         <table role="presentation" class="form_border container-fluid" style="display:table;" id="questiontable">
             <tbody class="formtbody">
@@ -39,7 +39,7 @@
                         <label class="fl" id="{PREFIX}-label-password" for="{PREFIX}-password" aria-hidden="true">{PASSWORDLABEL}</label>
                     </td>
                     <td class="data col-5">
-                        <input autocomplete="new-password" aria-labelledby="{PREFIX}-label-password" class="x-form-text x-form-field" type="{PREFIX}-password" name="{PREFIX}-password" id="{PREFIX}-password" value="" tabindex="0" />
+                        <input autocomplete="new-password" aria-labelledby="{PREFIX}-label-password" class="x-form-text x-form-field" type="password" name="{PREFIX}-password" id="{PREFIX}-password" value="" tabindex="0" />
                     </td>
                 </tr>
                 <tr class="surveysubmit">
