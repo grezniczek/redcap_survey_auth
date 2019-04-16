@@ -44,28 +44,32 @@ var RUBSurveyAuth = function() {
                     console.log('Successfully executed SurveyAuth server request:')
                     console.log(data)
                 }
-                if (data.error != undefined) {
-                    failmsg.show()
-                }
-                else {
+                if (data.success) {
                     if (debug) console.log(`Redirecting to ${data.target}`)
                     document.location.href = data.target
+                }
+                else {
+                    failmsg.show()
+                    uinput.attr('disabled', false)
+                    pinput.attr('disabled', false)
+                    submit.attr('disabled', false)
+                    setTimeout(function() {
+                        submit.html(submitNormal);
+                    })
                 }
             })
             .fail(function(jqXHR, textStatus, errorThrown) {
                 failmsg.show()
-                if (debug) {
-                    console.log(`SurveyAuth server request failed:`)
-                    console.log(errorThrown)
-                }
-            })
-            .always(function() {
                 uinput.attr('disabled', false)
                 pinput.attr('disabled', false)
                 submit.attr('disabled', false)
                 setTimeout(function() {
                     submit.html(submitNormal);
                 })
+                if (debug) {
+                    console.log(`SurveyAuth server request failed:`)
+                    console.log(errorThrown)
+                }
             })
             return false;
         },
