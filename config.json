@@ -22,6 +22,19 @@
     ],
     "project-settings": [
         {
+            "key": "surveyauth_log",
+            "name": "Logging (default: All)",
+            "type": "dropdown",
+            "choices": [
+                { "value": "none", "name": "None" },
+                { "value": "fail", "name": "Failed attempts only" },
+                { "value": "success", "name": "Successful attempts" },
+                { "value": "all", "name": "All" }
+            ],
+            "super-users-only": true,
+            "repeatable": false
+        },
+        {
             "key": "surveyauth_debug",
             "name": "Debug Mode",
             "type": "checkbox",
@@ -31,14 +44,14 @@
         {
             "key": "surveyauth_token",
             "name": "API Token",
-            "type": "text",
+            "type": "textarea",
             "required": true,
             "repeatable": false
         },
         {
             "key": "surveyauth_text",
             "name": "Text displayed above username/password fields (default: 'Login is required to continue.')",
-            "type": "textara",
+            "type": "textarea",
             "repeatable": false
         },
         {
@@ -62,8 +75,76 @@
         {
             "key": "surveyauth_failmsg",
             "name": "Fail message (default = 'Invalid username and/or password or access denied.')",
-            "type": "text",
+            "type": "textarea",
             "repeatable": false
+        },
+        {
+            "key": "surveyauth_methodinfo",
+            "name": "Select the authentication method(s) to use. <i>Table</i> means the REDCap table-based authentication method, <i>LDAP</i> means the LDAP configured in REDCap, <i>Other LDAP</i> let's you specify custom LDAP settings, <i>Custom</i> let's you set a list of username/password pairs. When multiple methods are active at the same time, the order of processing is: Custom &gt; Table &gt; Other LDAP &gt; LDAP. When no authentication method is used, all logins will fail.",
+            "type": "descriptive"
+        },
+        {
+            "key": "surveyauth_usetable",
+            "name": "Table",
+            "type": "checkbox"
+        },
+        {
+            "key": "surveyauth_useldap",
+            "name": "LDAP",
+            "type": "checkbox"
+        },
+        {
+            "key": "surveyauth_useotherldap",
+            "name": "Other LDAP",
+            "type": "checkbox"
+        },
+        {
+            "key": "surveyauth_otherldap",
+            "name": "LDAP Parameters (JSON, see docs)",
+            "type": "json",
+            "branchingLogic": {
+                "field": "surveyauth_useotherldap",
+                "op": "=",
+                "value": true
+            },
+            "required": true
+        },
+        {
+            "key": "surveyauth_usecustom",
+            "name": "Custom",
+            "type": "checkbox"
+        },
+        {
+            "key": "surveyauth_custom",
+            "name": "Custom Credentials (one set of credentials per line: username:password)",
+            "type": "textarea",
+            "branchingLogic": {
+                "field": "surveyauth_usecustom",
+                "op": "=",
+                "value": true
+            },
+            "required": true
+        },
+        {
+            "key": "surveyauth_whitelistinfo",
+            "name": "Whitelisting can be activated. When active, only users in the whitelist can authenticate successfully. All others are denied (an empty whitelist has a deny-all-effect).",
+            "type": "descriptive"
+        },
+        {
+            "key": "surveyauth_usewhitelist",
+            "name": "Use Whitelist",
+            "type": "checkbox"
+        },
+        {
+            "key": "surveyauth_whitelist",
+            "name": "Whitelist (one username per line)",
+            "type": "textarea",
+            "branchingLogic": {
+                "field": "surveyauth_usewhitelist",
+                "op": "=",
+                "value": true
+            },
+            "required": true
         }
     ],
     "no-auth-pages": [
