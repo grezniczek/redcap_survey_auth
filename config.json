@@ -68,7 +68,7 @@
         },
         {
             "key": "surveyauth_submitlabel",
-            "name": "Password label (default = 'Submit')",
+            "name": "Submit label (default = 'Submit')",
             "type": "text",
             "repeatable": false
         },
@@ -76,6 +76,18 @@
             "key": "surveyauth_failmsg",
             "name": "Fail message (default = 'Invalid username and/or password or access denied.')",
             "type": "textarea",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_lockoutmsg",
+            "name": "Lockout message (default = 'Too many failed login attempts. Please try again later.')",
+            "type": "textarea",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_lockouttime",
+            "name": "Lockout time (minutes; default = 5 minutes)",
+            "type": "text",
             "repeatable": false
         },
         {
