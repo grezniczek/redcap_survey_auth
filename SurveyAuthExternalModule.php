@@ -155,7 +155,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
             // Check credentials.
             // First, let's see if the whitelist is active.
-            if ($this->settings->useWhitelist && !in_array($username, $this->settings->whitelist)) {
+            if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist)) {
                 break;
             }
             // Check custom credentials if enabled.
@@ -299,6 +299,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     private function authenticateCustom($username, $password, &$result)
     {
+        $username = strtolower($username);
         if (isset($this->settings->customCredentials[$username]) && $this->settings->customCredentials[$username] == $password) {
             $result["success"] = true;
         }
@@ -637,7 +638,9 @@ class SurveyAuthSettings
         foreach ($lines as $line) {
             $parts = explode(":", $line);
             if (count($parts) > 1) {
-                $creds[$parts[0]] = join(":", array_slice($parts, 1));
+                $username = strtolower($parts[0]);
+                $password = join(":", array_slice($parts, 1));
+                $creds[$username] = $password;
             }
         }
         return $creds;
@@ -648,7 +651,7 @@ class SurveyAuthSettings
         $whitelist = array();
         $lines = explode("\n", $raw);
         foreach ($lines as $line) {
-            $line = trim($line);
+            $line = trim(strtolower($line));
             if (strlen($line)) array_push($whitelist, $line);
         }
         return $whitelist;
