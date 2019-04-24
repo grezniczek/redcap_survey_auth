@@ -4,19 +4,15 @@ A REDCap External Module that adds authentication to surveys.
 
 ## Purpose / Use Case
 
-In some cases it may be useful to present users with a data entry form but not confront them with the REDCap user interface, yet still be able to tell who the person entering the data was. This way, they do not need to be members of the project or even have a REDCap account. 
+In some cases it may be useful to present users with a data entry form but not confront them with the REDCap user interface, yet still be able to tell who the person entering the data was. This way, they do not need to be members of the project or even have a REDCap account.
 
 Possible use cases may be incident reports, internal orders or requests for goods or services, etc.
 
 ## Effect
 
-When enabled for a survey, a login page will be displayed as first page of a survey that the user needs to complete before being able to proceed to the survey (similar to the reCAPTCHA feature introduced in REDCap 8.11). 
+When enabled for a survey, a login page will be displayed as first page of a survey that the user needs to complete before being able to proceed to the survey (similar to the reCAPTCHA feature introduced in REDCap 8.11).
 
 Survey users can be authenticated against REDCap Users (table-based authentication), any number or LDAP servers, and/or against a list or username/password entries provided in the module's project configuration.
-
-## Limitations
-
-- Currently, there is no mechanism that limits login attempts. 
 
 ## Requirements
 
@@ -24,7 +20,7 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 ## Installation
 
-- Clone this repo into <redcap-root>/modules/redcap_survey_auth_v<version-number>, or
+- Clone this repo into `<redcap-root>/modules/redcap_survey_auth_v<version-number>`, or
 - Obtain this module from the Consortium REDCap Repo via the Control Center.
 - Go to Control Center > Technical / Developer Tools > External Modules and enable REDCap Survey Auth.
 - Enable the module for each project that needs survey authentication. Be sure to include the action tag @SURVEY-AUTH somewhere in the survey instrument and to configure the module's project settings (authentication is deactivated with the default settings).
@@ -35,7 +31,7 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 - **Global - Debug Mode:** When enabled, some additional information will be printed to the Web-browser's console. This setting is global, i.e. debug info will be shown regardless of the debug setting in a project.
 
-- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism.
+- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism. The lockout occurs after 3 failed attempts.
 
 ### Project-Level Settings
 
@@ -59,9 +55,9 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 - **Fail message:** A message that is displayed to the user in case the login fails. Defaults to 'Invalid username and/or password or access denied.'.
 
-- **Lockout message:** A message that is displayed to the user in case of too many failed login attemptss. Defaults to 'Too many failed login attempts. Please try again later.'.
+- **Lockout message:** A message that is displayed to the user in case of too many failed login attempts. Defaults to 'Too many failed login attempts. Please try again later.'.
 
-- **Authentication methods:** Any of the following methods can be used for authentication. Note the order, in which authentication is attempted: Custom &gt; Table &gt; Other LDAP &gt; LDAP. 
+- **Authentication methods:** Any of the following methods can be used for authentication. Note the order, in which authentication is attempted: Custom > Table > Other LDAP > LDAP.
 
   - **Table:** The REDCap user table is used to look up user/password combinations.
 
@@ -90,7 +86,7 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
   - **Custom:** When selected, custom credentials can be entered into a text box. Type one username-password pair per line, separated by a colon (e.g. `UserXY:secret123`). Usernames are not case-sensitive (passwords are).
 
-- **Use Whitelist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully. 
+- **Use Whitelist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully.
 
 ### @SURVEY-AUTH Action Tag
 
