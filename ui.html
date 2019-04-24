@@ -48,10 +48,10 @@
                             <tbody>
                                 <tr>
                                     <td colspan="2" style="text-align:center;padding:15px 0;">
-                                        <button id="{PREFIX}-submit" tabindex="0" class="jqbutton nowrap ui-button ui-corner-all ui-widget" style="color:#800000;width:100%;max-width:140px;" onclick="RUBSurveyAuth.verify('{PREFIX}'); return false;">
+                                        <button id="{PREFIX}-submit" tabindex="0" class="jqbutton nowrap ui-button ui-corner-all ui-widget ui-button-disabled ui-state-disabled" style="color:#800000;width:100%;max-width:140px;" onclick="RUBSurveyAuth.verify('{PREFIX}'); return false;">
                                             {SUBMITLABEL}
                                         </button>
-                                        <div id="{PREFIX}-failmsg" class="{PREFIX}-failmsg" style="display: none">{FAILMSG}</div>
+                                        <div id="{PREFIX}-failmsg" class="{PREFIX}-failmsg" style="display: none"></div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -62,3 +62,8 @@
         </table>
     </div>
 </form>
+<script>
+    $(function() {
+        RUBSurveyAuth.setup('{PREFIX}')
+    })
+</script>

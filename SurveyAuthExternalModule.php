@@ -58,10 +58,10 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "{QUERYURL}" => $queryUrl,
                 "{SURVEYTITLE}" => $GLOBALS["title"],
                 "{INSTRUCTIONS}" => $this->settings->text,
-                "{USERNAMELABEL}" => $this->settings->usernamelabel,
-                "{PASSWORDLABEL}" => $this->settings->passwordlabel,
-                "{SUBMITLABEL}" => $this->settings->submitlabel,
-                "{FAILMSG}" => $this->settings->failmsg,
+                "{USERNAMELABEL}" => $this->settings->usernameLabel,
+                "{PASSWORDLABEL}" => $this->settings->passwordLabel,
+                "{SUBMITLABEL}" => $this->settings->submitLabel,
+                "{FAILMSG}" => $this->settings->failMsg,
                 "{BLOB}" => $blob,
                 "{DEBUG}" => $this->settings->debug ? " data-debug=\"1\"" : ""
             );
@@ -139,6 +139,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             "error" => null,
         );
         $record_id = null;
+        $ip = $_SERVER["REMOTE_ADDR"] . $_SERVER["HTTP_X_FORWARDED_FOR"];
 
         do {
             // Retrieve transferred data.
@@ -151,6 +152,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $project_id = $data["project_id"];
             if ($project_id != $GLOBALS["project_id"]) {
                 $result["error"] = "Project ID mismatch.";
+                break;
+            }
+            // Check lockout status.
+            $lockoutCount = $this->checkLockoutStatus($ip);
+            if ($lockoutCount > 2) {
+                $result["error"] = $this->settings->lockoutMsg;
+                $result["lockout"] = $this->settings->lockouttime * 60 * 1000;
                 break;
             }
             // Check credentials.
@@ -178,7 +186,14 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 if (!$this->settings->debug || !strlen($result["error"])) {
                     $result["error"] = "Bad username / password.";
                 }
+                // Update lockout status.
+                $this->updateLockoutStatus($ip);
                 break;
+            }
+
+            // Login was successful.
+            if ($lockoutCount > 0) {
+                $this->clearLockoutStatus($ip);
             }
 
             // Get data from data dictionary.
@@ -266,6 +281,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         }
         else {
             $json["error"] = $result["error"];
+        }
+        if (isset($result["lockout"])) {
+            $json["lockout"] = $result["lockout"];
         }
         if ($this->settings->debug) {
             $json["auth_result"] = $result;
@@ -553,6 +571,47 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         // User is not a member of the group.
         return false;
     }
+
+    /**
+     * Helper function which checks whether failed login attempts have been recorded for an IP address.
+     */
+    private function checkLockoutStatus($ip) {
+        if (isset($this->settings->lockoutStatus[$ip])) {
+            $ls = $this->settings->lockoutStatus[$ip];
+            if ($ls["n"] > 2) {
+                $ts = $ls["ts"];
+                if (((new \DateTime)->getTimestamp() - $ts) > ($this->settings->lockouttime * 60)) {
+                    return 2;
+                }
+                $this->updateLockoutStatus($ip);
+            }
+            return $ls["n"];
+        } 
+        return 0;
+    }
+
+    /**
+     * Helper function which updates the lockout status for an IP address.
+     */
+    private function updateLockoutStatus($ip) {
+        if ($this->settings->lockouttime != 0) {
+            $ls = isset($this->settings->lockoutStatus[$ip]) ? $this->settings->lockoutStatus[$ip] : array("n" => 0);
+            $ls["n"]++;
+            $ls["ts"] = (new \DateTime())->getTimestamp();
+            $this->settings->lockoutStatus[$ip] = $ls;
+            $this->setSystemSetting("surveyauth_lockouts", json_encode($this->settings->lockoutStatus));
+        }
+    }
+
+    /**
+     * Helper function which clears the lockout status for an IP address.
+     */
+    private function clearLockoutStatus($ip) {
+        if (isset($this->settings->lockoutStatus[$ip])) {
+            unset($this->settings->lockoutStatus[$ip]);
+            $this->setSystemSetting("surveyauth_lockouts", json_encode($this->settings->lockoutStatus));
+        }
+    }
 }
 
 /**
@@ -564,10 +623,12 @@ class SurveyAuthSettings
     public $log;
     public $token;
     public $text;
-    public $usernamelabel;
-    public $passwordlabel;
-    public $submitlabel;
-    public $failmsg;
+    public $usernameLabel;
+    public $passwordLabel;
+    public $submitLabel;
+    public $failMsg;
+    public $lockoutMsg;
+    public $lockouttime;
     public $blobSecret;
     public $blobHmac;
     public $isProject;
@@ -579,13 +640,15 @@ class SurveyAuthSettings
     public $otherLDAPConfigs;
     public $useWhitelist;
     public $whitelist;
+    public $lockoutStatus;
 
     private $m;
 
     function __construct($module) 
     {
+        $this->isProject = isset($GLOBALS["project_id"]);
         $this->m = $module;
-        $this->debug = $module->getSystemSetting("surveyauth_globaldebug") || $module->getProjectSetting("surveyauth_debug");
+        $this->debug = $module->getSystemSetting("surveyauth_globaldebug") || ($this->isProject && $module->getProjectSetting("surveyauth_debug"));
 
         // Get or generate a secrets to encrypt payloads.
         $this->blobSecret = $module->getSystemSetting("surveyauth_blobsecret");
@@ -598,16 +661,19 @@ class SurveyAuthSettings
             $this->blobHmac = $this->genKey(32);
             $module->setSystemSetting("surveyauth_blobhmac", $this->blobHmac);
         }
-        $this->isProject = isset($GLOBALS["project_id"]);
+        $lockouttime = $module->getSystemSetting("surveyauth_lockouttime");
+        $this->lockouttime = is_numeric($lockouttime) ? $lockouttime * 1 : 5;
+        $this->lockoutStatus = $this->lockouttime === 0 ? array() : json_decode($module->getSystemSetting("surveyauth_lockouts"), true);
         // Only in the context of a project
-        if ($this-isProject) {
+        if ($this->isProject) {
             $this->log = $this->getValue("surveyauth_log", "all");
             $this->token = $this->getValue("surveyauth_token", null);
             $this->text = $this->getValue("surveyauth_text", "Login is required to continue.");
-            $this->usernamelabel = $this->getValue("surveyauth_usernamelabel", "Username");
-            $this->passwordlabel = $this->getValue("surveyauth_passwordlabel", "Password");
-            $this->submitlabel = $this->getValue("surveyauth_submitlabel", "Submit");
-            $this->failmsg = $this->getValue("surveyauth_failmsg", "Invalid username and/or password or access denied.");
+            $this->usernameLabel = $this->getValue("surveyauth_usernamelabel", "Username");
+            $this->passwordLabel = $this->getValue("surveyauth_passwordlabel", "Password");
+            $this->submitLabel = $this->getValue("surveyauth_submitlabel", "Submit");
+            $this->failMsg = $this->getValue("surveyauth_failmsg", "Invalid username and/or password or access denied.");
+            $this->lockoutMsg = $this->getValue("surveyauth_lockoutmsg", "Too many failed login attempts. Please try again later.");
             $this->useTable = $this->getValue("surveyauth_usetable", false);
             $this->useLDAP = $this->getValue("surveyauth_useldap", false);
             $this->useOtherLDAP = $this->getValue("surveyauth_useotherldap", false);
