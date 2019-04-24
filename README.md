@@ -35,6 +35,8 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 - **Global - Debug Mode:** When enabled, some additional information will be printed to the Web-browser's console. This setting is global, i.e. debug info will be shown regardless of the debug setting in a project.
 
+- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism.
+
 ### Project-Level Settings
 
 - **Logging:** Determines the type of logging that occurs.
@@ -59,8 +61,6 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 - **Lockout message:** A message that is displayed to the user in case of too many failed login attemptss. Defaults to 'Too many failed login attempts. Please try again later.'.
 
-- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes.
-
 - **Authentication methods:** Any of the following methods can be used for authentication. Note the order, in which authentication is attempted: Custom &gt; Table &gt; Other LDAP &gt; LDAP. 
 
   - **Table:** The REDCap user table is used to look up user/password combinations.
@@ -70,6 +70,7 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
   - **Other LDAP:** Provide any number of LDAP connection info as a JSON array. The order of processing will be as provided in the array. See the [PEAR manual for the LDAP auth container](https://pear.php.net/manual/en/package.authentication.auth.storage.ldap.php) for a list of parameters (_debug_ is not supported) or the LDAP configuration in REDCap's `webtoolsl2/ldap` folder.
 
     Example:
+
     ```JSON
     [
         {
@@ -86,6 +87,7 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
         }
     ]
     ```
+
   - **Custom:** When selected, custom credentials can be entered into a text box. Type one username-password pair per line, separated by a colon (e.g. `UserXY:secret123`). Usernames are not case-sensitive (passwords are).
 
 - **Use Whitelist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully. 

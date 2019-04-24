@@ -18,6 +18,12 @@
             "name": "Global - Debug Mode",
             "type": "checkbox",
             "repeatable": false
+        },
+        {
+            "key": "surveyauth_lockouttime",
+            "name": "Lockout time (minutes; default = 5 minutes)",
+            "type": "text",
+            "repeatable": false
         }
     ],
     "project-settings": [
@@ -82,12 +88,6 @@
             "key": "surveyauth_lockoutmsg",
             "name": "Lockout message (default = 'Too many failed login attempts. Please try again later.')",
             "type": "textarea",
-            "repeatable": false
-        },
-        {
-            "key": "surveyauth_lockouttime",
-            "name": "Lockout time (minutes; default = 5 minutes)",
-            "type": "text",
             "repeatable": false
         },
         {
