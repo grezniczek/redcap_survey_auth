@@ -650,22 +650,22 @@ class SurveyAuthSettings
         $this->m = $module;
         $this->debug = $module->getSystemSetting("surveyauth_globaldebug") || ($this->isProject && $module->getProjectSetting("surveyauth_debug"));
 
-        // Get or generate a secrets to encrypt payloads.
-        $this->blobSecret = $module->getSystemSetting("surveyauth_blobsecret");
-        if (!strlen($this->blobSecret)) {
-            $this->blobSecret = $this->genKey(32);
-            $module->setSystemSetting("surveyauth_blobsecret", $this->blobSecret);
-        }
-        $this->blobHmac = $module->getSystemSetting("surveyauth_blobhmac");
-        if (!strlen($this->blobHmac)) {
-            $this->blobHmac = $this->genKey(32);
-            $module->setSystemSetting("surveyauth_blobhmac", $this->blobHmac);
-        }
         $lockouttime = $module->getSystemSetting("surveyauth_lockouttime");
         $this->lockouttime = is_numeric($lockouttime) ? $lockouttime * 1 : 5;
         $this->lockoutStatus = $this->lockouttime === 0 ? array() : json_decode($module->getSystemSetting("surveyauth_lockouts"), true);
         // Only in the context of a project
         if ($this->isProject) {
+            // Get or generate a secrets to encrypt payloads.
+            $this->blobSecret = $module->getSystemSetting("surveyauth_blobsecret");
+            if (!strlen($this->blobSecret)) {
+                $this->blobSecret = $this->genKey(32);
+                $module->setSystemSetting("surveyauth_blobsecret", $this->blobSecret);
+            }
+            $this->blobHmac = $module->getSystemSetting("surveyauth_blobhmac");
+            if (!strlen($this->blobHmac)) {
+                $this->blobHmac = $this->genKey(32);
+                $module->setSystemSetting("surveyauth_blobhmac", $this->blobHmac);
+            }
             $this->log = $this->getValue("surveyauth_log", "all");
             $this->token = $this->getValue("surveyauth_token", null);
             $this->text = $this->getValue("surveyauth_text", "Login is required to continue.");
