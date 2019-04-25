@@ -62,8 +62,15 @@
         </table>
     </div>
 </form>
+<template id="{PREFIX}-footer-tpl">
+    <div id="footer" class="d-sm-block col-md-12" aria-hidden="true" style="display: block;">
+        <a href="https://projectredcap.org" tabindex="-1" target="_blank" style="margin-bottom: 10px; display: inline-block;">Powered by REDCap</a>
+    </div>
+</template>
 <script>
     $(function() {
         RUBSurveyAuth.setup('{PREFIX}')
+        // Add footer if necessary.
+        if ($('#footer').length == 0) $('#pagecontainer').append($('#{PREFIX}-footer-tpl').html())
     })
 </script>
