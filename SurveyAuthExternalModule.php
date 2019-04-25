@@ -5,7 +5,7 @@ namespace RUB\SurveyAuthExternalModule;
 use ExternalModules\AbstractExternalModule;
 
 /**
- * ExternalModule class for Patient Finder.
+ * ExternalModule class for survey authentication.
  */
 class SurveyAuthExternalModule extends AbstractExternalModule {
     
