@@ -2,6 +2,7 @@
     "name": "Survey Auth",
     "namespace": "RUB\\SurveyAuthExternalModule",
     "description": "Adds authentication to surveys. <strong><a href=\"https://github.com/grezniczek/redcap_survey_auth\">See full documentation here</a></strong>.",
+    "framework-version": 1,
     "permissions": [
         "redcap_survey_page_top"
     ],
