@@ -40,7 +40,7 @@ var RUBSurveyAuth = function() {
         },
         verify: function(prefix) {
             // Find ui elements.
-            const form = $('#form');
+            const form = $('#${prefix}-form');
             const uinput = $(`#${prefix}-username`)
             const pinput = $(`#${prefix}-password`)
             const submit = $(`#${prefix}-submit`)
