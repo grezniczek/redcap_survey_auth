@@ -75,42 +75,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         }
     }
 
-    private $cipher = "AES-256-CBC";
-
-    /**
-     * Helper function to package an array into an encrytped blob (base64-encoded).
-     * $data is expected to be an associative array.
-     */
-    private function toSecureBlob($data)
-    {
-        $jsonData = json_encode($data);
-        $key = base64_decode($this->settings->blobSecret);
-        $ivLen = openssl_cipher_iv_length($this->cipher);
-        $iv = openssl_random_pseudo_bytes($ivLen);
-        $aesData = openssl_encrypt($jsonData, $this->cipher, $key, OPENSSL_RAW_DATA, $iv);
-        $hmac = hash_hmac('sha256', $aesData, $this->settings->blobHmac, true);
-        $blob = base64_encode($iv.$hmac.$aesData);
-        return $blob;
-    }
-
-    /**
-     * Helper function to decode an encrypted data blob.
-     * Retruns an associative array or null if there was a problem.
-     */
-    private function fromSecureBlob($blob) 
-    {
-        $raw = base64_decode($blob);
-        $key = base64_decode($this->settings->blobSecret);
-        $ivlen = openssl_cipher_iv_length($this->cipher);
-        $iv = substr($raw, 0, $ivlen);
-        $blobHmac = substr($raw, $ivlen, 32);
-        $aesData = substr($raw, $ivlen + 32);
-        $jsonData = openssl_decrypt($aesData, $this->cipher, $key, OPENSSL_RAW_DATA, $iv);
-        $calcHmac = hash_hmac('sha256', $aesData, $this->settings->blobHmac, true);
-        // Only return data if the hashes match.
-        return hash_equals($blobHmac, $calcHmac) ? json_decode($jsonData, true) : null;
-    }
-
     /**
      * A helper function that extracts parts of the data dictionary with the module's action tag.
      */
@@ -349,6 +313,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $result["error"] = join("\n", $errors);
     }
 
+    //region LDAP
+
     private function doLDAPauth($username, $password, $config, &$result) 
     {
         // As we rely on the ldap module, check that it has been loaded.
@@ -572,10 +538,15 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         return false;
     }
 
+    //endregion
+
+    //region Lockout
+
     /**
      * Helper function which checks whether failed login attempts have been recorded for an IP address.
      */
-    private function checkLockoutStatus($ip) {
+    private function checkLockoutStatus($ip)
+    {
         if (isset($this->settings->lockoutStatus[$ip])) {
             $ls = $this->settings->lockoutStatus[$ip];
             if ($ls["n"] > 2) {
@@ -593,7 +564,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     /**
      * Helper function which updates the lockout status for an IP address.
      */
-    private function updateLockoutStatus($ip) {
+    private function updateLockoutStatus($ip) 
+    {
         if ($this->settings->lockouttime != 0) {
             $ls = isset($this->settings->lockoutStatus[$ip]) ? $this->settings->lockoutStatus[$ip] : array("n" => 0);
             $ls["n"]++;
@@ -606,12 +578,78 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     /**
      * Helper function which clears the lockout status for an IP address.
      */
-    private function clearLockoutStatus($ip) {
+    private function clearLockoutStatus($ip) 
+    {
         if (isset($this->settings->lockoutStatus[$ip])) {
             unset($this->settings->lockoutStatus[$ip]);
             $this->setSystemSetting("surveyauth_lockouts", json_encode($this->settings->lockoutStatus));
         }
     }
+
+    //endregion
+
+    //region Secret Blobs
+
+    private $cipher = "AES-256-CBC";
+
+    /**
+     * Helper function to package an array into an encrytped blob (base64-encoded).
+     * $data is expected to be an associative array.
+     */
+    private function toSecureBlob($data)
+    {
+        $this->checkKeys();
+        $jsonData = json_encode($data);
+        $key = base64_decode($this->settings->blobSecret);
+        $ivLen = openssl_cipher_iv_length($this->cipher);
+        $iv = openssl_random_pseudo_bytes($ivLen);
+        $aesData = openssl_encrypt($jsonData, $this->cipher, $key, OPENSSL_RAW_DATA, $iv);
+        $hmac = hash_hmac('sha256', $aesData, $this->settings->blobHmac, true);
+        $blob = base64_encode($iv.$hmac.$aesData);
+        return $blob;
+    }
+
+    /**
+     * Helper function to decode an encrypted data blob.
+     * Retruns an associative array or null if there was a problem.
+     */
+    private function fromSecureBlob($blob) 
+    {
+        $this->checkKeys();
+        $raw = base64_decode($blob);
+        $key = base64_decode($this->settings->blobSecret);
+        $ivlen = openssl_cipher_iv_length($this->cipher);
+        $iv = substr($raw, 0, $ivlen);
+        $blobHmac = substr($raw, $ivlen, 32);
+        $aesData = substr($raw, $ivlen + 32);
+        $jsonData = openssl_decrypt($aesData, $this->cipher, $key, OPENSSL_RAW_DATA, $iv);
+        $calcHmac = hash_hmac('sha256', $aesData, $this->settings->blobHmac, true);
+        // Only return data if the hashes match.
+        return hash_equals($blobHmac, $calcHmac) ? json_decode($jsonData, true) : null;
+    }
+
+    /**
+     * Checks if cryptographic keys have been generated already, and if not generates and stores them.
+     */
+    private function checkKeys()
+    {
+        if (!strlen($this->settings->blobSecret)) {
+            $this->settings->blobSecret = $this->genKey(32);
+            $this->setSystemSetting("surveyauth_blobsecret", $this->settings->blobSecret);
+        }
+        if (!strlen($this->settings->blobHmac)) {
+            $this->settings->blobHmac = $this->genKey(32);
+            $this->setSystemSetting("surveyauth_blobhmac", $this->settings->blobHmac);
+        }
+    }
+
+    private function genKey($keySize) 
+    {
+        $key = openssl_random_pseudo_bytes($keySize);
+        return base64_encode($key);
+    }
+
+    //endregion
 }
 
 /**
@@ -649,23 +687,13 @@ class SurveyAuthSettings
         $this->isProject = isset($GLOBALS["project_id"]);
         $this->m = $module;
         $this->debug = $module->getSystemSetting("surveyauth_globaldebug") || ($this->isProject && $module->getProjectSetting("surveyauth_debug"));
-
+        $this->blobSecret = $module->getSystemSetting("surveyauth_blobsecret");
+        $this->blobHmac = $module->getSystemSetting("surveyauth_blobhmac");
         $lockouttime = $module->getSystemSetting("surveyauth_lockouttime");
         $this->lockouttime = is_numeric($lockouttime) ? $lockouttime * 1 : 5;
         $this->lockoutStatus = $this->lockouttime === 0 ? array() : json_decode($module->getSystemSetting("surveyauth_lockouts"), true);
         // Only in the context of a project
         if ($this->isProject) {
-            // Get or generate a secrets to encrypt payloads.
-            $this->blobSecret = $module->getSystemSetting("surveyauth_blobsecret");
-            if (!strlen($this->blobSecret)) {
-                $this->blobSecret = $this->genKey(32);
-                $module->setSystemSetting("surveyauth_blobsecret", $this->blobSecret);
-            }
-            $this->blobHmac = $module->getSystemSetting("surveyauth_blobhmac");
-            if (!strlen($this->blobHmac)) {
-                $this->blobHmac = $this->genKey(32);
-                $module->setSystemSetting("surveyauth_blobhmac", $this->blobHmac);
-            }
             $this->log = $this->getValue("surveyauth_log", "all");
             $this->token = $this->getValue("surveyauth_token", null);
             $this->text = $this->getValue("surveyauth_text", "Login is required to continue.");
@@ -684,11 +712,6 @@ class SurveyAuthSettings
             $this->useWhitelist = $this->getValue("surveyauth_usewhitelist", false);
             $this->whitelist = $this->parseWhitelist($this->getValue("surveyauth_whitelist", ""));
         }
-    }
-
-    private function genKey($keySize) {
-        $key = openssl_random_pseudo_bytes($keySize);
-        return base64_encode($key);
     }
 
     private function getValue($name, $default) 
