@@ -82,7 +82,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     {
         $fields = array();
         foreach ($dataDictionary as $fieldInfo) {
-            if (strpos($fieldInfo->field_annotation, SurveyAuthExternalModule::$ACTIONTAG)) {
+            if (strpos($fieldInfo->field_annotation, "@".SurveyAuthExternalModule::$ACTIONTAG)) {
                 array_push($fields, new SurveyAuthInfo($fieldInfo, $dataDictionary));
             }
         }
@@ -769,46 +769,48 @@ class SurveyAuthInfo
         // Extract and parse parameters.
         $re = '/@' . SurveyAuthExternalModule::$ACTIONTAG . '\((?\'config\'.+=.+)\)/m';
         preg_match_all($re, $fieldInfo->field_annotation, $matches, PREG_SET_ORDER, 0);
-        foreach (explode(",", $matches[0]["config"]) as $config) {
-            $config = explode("=", trim($config), 2);
-            $key = strtolower(trim($config[0]));
-            $value = $config[1];
-            if (in_array($key, $this->ALLOWEDMAPPINGS, true)) {
-                switch($key) {
-                    case "success": {
-                        $this->successField = $fieldInfo->field_name;
-                        $this->successValue = $value;
-                        break;
-                    } 
-                    default: {
-                        $this->map[$key] = $value; 
-                        break;
+        if (count($matches)) {
+            foreach (explode(",", $matches[0]["config"]) as $config) {
+                $config = explode("=", trim($config), 2);
+                $key = strtolower(trim($config[0]));
+                $value = $config[1];
+                if (in_array($key, $this->ALLOWEDMAPPINGS, true)) {
+                    switch($key) {
+                        case "success": {
+                            $this->successField = $fieldInfo->field_name;
+                            $this->successValue = $value;
+                            break;
+                        } 
+                        default: {
+                            $this->map[$key] = $value; 
+                            break;
+                        }
                     }
                 }
             }
-        }
-        // Is timestamp mapped? If so, extract the date format.
-        if (array_key_exists("timestamp", $this->map)) {
-            foreach($dd as $f) {
-                if ($f->field_name == $this->map["timestamp"] && $f->field_type == "text") {
-                    switch($f->text_validation_type_or_show_slider_number) {
-                        case "date_ymd":
-                        case "date_mdy":
-                        case "date_dmy":
-                            $this->dateFormat = "Y-m-d";
-                             break;
-                        case "datetime_ymd":
-                        case "datetime_mdy":
-                        case "datetime_dmy":
-                            $this->dateFormat = "Y-m-d H:i"; 
-                            break;
-                        case "datetime_seconds_ymd":
-                        case "datetime_seconds_mdy":
-                        case "datetime_seconds_dmy":
-                            $this->dateFormat = "Y-m-d H:i:s"; 
-                            break;
+            // Is timestamp mapped? If so, extract the date format.
+            if (array_key_exists("timestamp", $this->map)) {
+                foreach($dd as $f) {
+                    if ($f->field_name == $this->map["timestamp"] && $f->field_type == "text") {
+                        switch($f->text_validation_type_or_show_slider_number) {
+                            case "date_ymd":
+                            case "date_mdy":
+                            case "date_dmy":
+                                $this->dateFormat = "Y-m-d";
+                                break;
+                            case "datetime_ymd":
+                            case "datetime_mdy":
+                            case "datetime_dmy":
+                                $this->dateFormat = "Y-m-d H:i"; 
+                                break;
+                            case "datetime_seconds_ymd":
+                            case "datetime_seconds_mdy":
+                            case "datetime_seconds_dmy":
+                                $this->dateFormat = "Y-m-d H:i:s"; 
+                                break;
+                        }
+                        break;
                     }
-                    break;
                 }
             }
         }
