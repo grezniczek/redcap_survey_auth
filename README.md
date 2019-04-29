@@ -12,6 +12,8 @@ Possible use cases may be incident reports, internal orders or requests for good
 
 When enabled for a survey, a login page will be displayed as first page of a survey that the user needs to complete before being able to proceed to the survey (similar to the reCAPTCHA feature introduced in REDCap 8.11).
 
+![Screenshot](surveyauth.png)
+
 Survey users can be authenticated against REDCap Users (table-based authentication), any number or LDAP servers, and/or against a list or username/password entries provided in the module's project configuration.
 
 ## Requirements
