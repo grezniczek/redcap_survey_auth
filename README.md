@@ -2,6 +2,8 @@
 
 A REDCap External Module that adds authentication to surveys.
 
+See the [changelog](#changelog) for information on release updates.
+
 ## Purpose / Use Case
 
 In some cases it may be useful to present users with a data entry form but not confront them with the REDCap user interface, yet still be able to tell who the person entering the data was. This way, they do not need to be members of the project or even have a REDCap account.
@@ -101,3 +103,11 @@ To enable authentication for a survey, the **@SURVEY-AUTH** action tag must be u
 When _username_, _email_, _fullname_, or _timestamp_ are defined, the respective data will be inserted into to records into the specified fields. Timestamp format will match the datetime format of the target field (time-only fields are not supported; defaults to YMD).
 
 When a value for _success_ is defined, the field with the action tag will be set to this value. If used, the field should be set to @READONLY/@READONLY-SURVEY or @HIDDEN-SURVEY.
+
+
+## [Changelog](#changelog)
+
+Release | Description
+------- | ---------------------
+v1.0.0  | Initial release.
+v1.1.0  | Bugfixes (IE11 compatibility).
