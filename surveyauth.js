@@ -1,6 +1,6 @@
 var RUBSurveyAuth = function() {
     return {
-        disable(btn, disabled) {
+        disable: function(btn, disabled) {
             if (disabled) {
                 btn.prop('disabled', true)
                 btn.addClass('ui-button-disabled')
@@ -14,10 +14,10 @@ var RUBSurveyAuth = function() {
         },
         setup: function(prefix) {
             // Find ui elements.
-            const uinput = $(`#${prefix}-username`)
-            const pinput = $(`#${prefix}-password`)
-            const submit = $(`#${prefix}-submit`)
-            const failmsg = $(`#${prefix}-failmsg`)
+            const uinput = $('#' + prefix + '-username')
+            const pinput = $('#' + prefix + '-password')
+            const submit = $('#' + prefix + '-submit')
+            const failmsg = $('#' + prefix + 'failmsg')
             const onblur = function() {
                 let username = uinput.val();
                 let pwd = pinput.val();
@@ -40,13 +40,13 @@ var RUBSurveyAuth = function() {
         },
         verify: function(prefix) {
             // Find ui elements.
-            const form = $(`#${prefix}-form`);
-            const uinput = $(`#${prefix}-username`)
-            const pinput = $(`#${prefix}-password`)
-            const submit = $(`#${prefix}-submit`)
-            const failmsg = $(`#${prefix}-failmsg`)
-            const submitNormal = $(`#${prefix}-submit-normal-tpl`).html()
-            const submitBusy =  $(`#${prefix}-submit-busy-tpl`).html()
+            const form = $('#' + prefix + '-form');
+            const uinput = $('#' + prefix + '-username')
+            const pinput = $('#' + prefix + '-password')
+            const submit = $('#' + prefix + '-submit')
+            const failmsg = $('#' + prefix + '-failmsg')
+            const submitNormal = $('#' + prefix + '-submit-normal-tpl').html()
+            const submitBusy =  $('#' + prefix + '-submit-busy-tpl').html()
 
             const username = uinput.val();
             const pwd = pinput.val();
@@ -56,8 +56,8 @@ var RUBSurveyAuth = function() {
             }
 
             const queryUrl = form.attr('data-queryurl')
-            const debug = form.attr('data-debug') == "1"
-            console.log("Verifying credentials ...")
+            const debug = form.attr('data-debug') == '1'
+            console.log('Verifying credentials ...')
 
             // Update UI while querying server.
             failmsg.hide()
@@ -83,7 +83,7 @@ var RUBSurveyAuth = function() {
                     console.log(data)
                 }
                 if (data.success) {
-                    if (debug) console.log(`Redirecting to ${data.target}`)
+                    if (debug) console.log('Redirecting to ' + data.target)
                     document.location.href = data.target
                 }
                 else {
@@ -123,11 +123,11 @@ var RUBSurveyAuth = function() {
                     uinput.focus()
                 })
                 if (debug) {
-                    console.log(`SurveyAuth server request failed:`)
+                    console.log('SurveyAuth server request failed:')
                     console.log(errorThrown)
                 }
             })
             return false;
-        },
+        }
     }
 }();
