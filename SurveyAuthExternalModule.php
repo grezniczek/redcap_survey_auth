@@ -40,6 +40,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
         // Check if $record is defined. If not, then authentication needs to be performed.
         if ($record == null) {
+
+            // This is needed for older versions of REDCap in order to write crytographic keys and lockouts to system settings.
+            if (method_exists($this, "disableUserBasedSettingPermissions")) {
+                $this->disableUserBasedSettingPermissions();
+            }
+
             // Need to authenticate - inject JavaScript and HTML.
             $jsUrl = $this->getUrl("surveyauth.js");
             print "<script type=\"text/javascript\" src=\"{$jsUrl}\"></script>";
@@ -316,6 +322,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     private function authenticateLDAP($username, $password, &$result) 
     {
+        include APP_PATH_WEBTOOLS . 'ldap/ldap_config.php';
         $config = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : null;
         if ($config) {
             $this->doLDAPauth($username, $password, $config, $result);

@@ -111,3 +111,4 @@ Release | Description
 ------- | ---------------------
 v1.0.0  | Initial release.
 v1.1.0  | Bugfixes (IE11 compatibility).
+v1.1.1  | Add call to disableUserBasedSettingPermissions() in order to support older REDCap versions. Fixed the bug that REDCap's LDAP configuration was not available (the module would only work for explicitly set LDAP configurations).
