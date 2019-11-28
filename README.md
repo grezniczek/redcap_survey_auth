@@ -2,6 +2,8 @@
 
 A REDCap External Module that adds authentication to surveys.
 
+**ATTENTION** - Version 1.2.0, while compatible with previous setups, introduces some major changes to the module's technical implementation. In short: The module does not use AJAX requests to perform authentication any more, but handles all on the server. This is a huge benefit, as no other endpoints besides `/surveys/` are required, and thus the module can be used in instances that only expose the survey endpoint to the Internet.
+
 See the [changelog](#changelog) for information on release updates.
 
 ## Purpose / Use Case
@@ -33,8 +35,6 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 ### System-Level Settings
 
-- **Global - Debug Mode:** When enabled, some additional information will be printed to the Web-browser's console. This setting is global, i.e. debug info will be shown regardless of the debug setting in a project.
-
 - **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism. The lockout occurs after 3 failed attempts.
 
 ### Project-Level Settings
@@ -45,9 +45,7 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
   - _Successful attempts:_ Log entries will be produced for successful logins.
   - _All:_ Log entries will be produced for both types of events.
 
-- **Debug Mode:** When enabled, some additional information that may help troubleshooting will be printed to the Web-browser's console.
-
-- **API Token:** An API token of a user who can create new records. This is required, because the module needs to create a new record (and set data for any of the mappings defined in the action tag - see below) in order to be able to forward the survey user to the actual survey after authentication.
+- **API Token:** An API token of a user who can create new records. This is required for advanced functionality of the module, where data about the user can be entered into the record (as set by the mapping in the action tag - see below). If no token is provided, then such data cannot be captured and any mappings that may be specified in the action tag are ignored.
 
 - **Text displayed above username/password fields:** Optionally enter some prompt that is displayed to the survey user.
 
@@ -60,6 +58,8 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 - **Fail message:** A message that is displayed to the user in case the login fails. Defaults to 'Invalid username and/or password or access denied.'.
 
 - **Lockout message:** A message that is displayed to the user in case of too many failed login attempts. Defaults to 'Too many failed login attempts. Please try again later.'.
+
+- **Success message** and **Continue label:** A message and button label that are displayed to the user after successful authentication. This is only relevant when using the advanced mode (i.e. when an API token is provided).
 
 - **Authentication methods:** Any of the following methods can be used for authentication. Note the order, in which authentication is attempted: Custom > Table > Other LDAP > LDAP.
 
@@ -112,3 +112,4 @@ Release | Description
 v1.0.0  | Initial release.
 v1.1.0  | Bugfixes (IE11 compatibility).
 v1.1.1  | Add call to disableUserBasedSettingPermissions() in order to support older REDCap versions. Fixed the bug that REDCap's LDAP configuration was not available (the module would only work for explicitly set LDAP configurations).
+v1.2.0  | This version does not perform AJAX requests any more and can operate (with limitations) without providing an API token.

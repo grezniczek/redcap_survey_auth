@@ -1,0 +1,69 @@
+<style>
+    .{PREFIX}-successmsg {
+        margin-top: 20px;
+        color: green;
+        text-align: center;
+    }
+    .{PREFIX}-link-btn, .{PREFIX}-link-btn:visited {
+        text-decoration: none !important;
+    }
+</style>
+<div id="surveytitlelogo">
+    <table cellspacing="0" style="width:100%;max-width:100%;">
+        <tbody>
+            <tr>
+                <td valign="top">
+                    {LOGO}
+                    <h1 id="surveytitle">{SURVEYTITLE}</h1>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+<div>
+    <table role="presentation" class="form_border container-fluid" style="display:table;" id="questiontable">
+        <tbody class="formtbody">
+            <tr>
+                <td class="labelrc col-12 {PREFIX}-successmsg" colspan="3">
+                    {SUCCESSMSG}
+                </td>
+            </tr>
+            <tr class="surveysubmit">
+                <td class="labelrc col-12" style="padding:5px;" colspan="3">
+                    <table cellspacing="0">
+                        <tbody>
+                            <tr>
+                                <td colspan="2" style="text-align:center;padding:15px 0;">
+                                    <a href="{TARGETURL}" tabindex="0" class="{PREFIX}-link-btn jqbutton nowrap ui-button ui-corner-all ui-widget ui-button-disabled ui-state-disabled" style="color:#800000;width:100%;max-width:140px;">
+                                        {CONTINUELABEL}
+                                    </a>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+<template id="{PREFIX}-footer-tpl">
+    <div id="footer" class="d-sm-block col-md-12" aria-hidden="true" style="display: block;">
+        <a href="https://projectredcap.org" tabindex="-1" target="_blank" style="margin-bottom: 10px; display: inline-block;">Powered by REDCap</a>
+    </div>
+</template>
+<script>
+    $(function() {
+        // Add footer if necessary.
+        if ($('#footer').length == 0) $('#pagecontainer').append($('#{PREFIX}-footer-tpl').html())
+
+        // Auto-forward to target page.
+        setTimeout(function() {
+            window.location.replace('{TARGETURL}')
+        }, 300)
+    })
+</script>
+</div>
+</div>
+</div>
+</body>
+</html>

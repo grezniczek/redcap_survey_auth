@@ -14,12 +14,6 @@
     ],
     "system-settings": [
         {
-            "key": "surveyauth_globaldebug",
-            "name": "Global - Debug Mode",
-            "type": "checkbox",
-            "repeatable": false
-        },
-        {
             "key": "surveyauth_lockouttime",
             "name": "Lockout time (minutes; default = 5 minutes)",
             "type": "text",
@@ -41,17 +35,14 @@
             "repeatable": false
         },
         {
-            "key": "surveyauth_debug",
-            "name": "Debug Mode",
-            "type": "checkbox",
-            "super-users-only": true,
-            "repeatable": false
+            "key": "surveyauth_tokeninfo",
+            "name": "Below, an API token with 'create records' permission can be provided. When provided, the module can write data (as specified by the action tag parameters) to a (newly created) record before forwarding the user to the survey. Otherwise, no data is written to the record and the user is simply let through to the regular public survey. In any case, authentication is logged to the events table.",
+            "type": "descriptive"
         },
         {
             "key": "surveyauth_token",
             "name": "API Token",
-            "type": "textarea",
-            "required": true,
+            "type": "text",
             "repeatable": false
         },
         {
@@ -88,6 +79,18 @@
             "key": "surveyauth_lockoutmsg",
             "name": "Lockout message (default = 'Too many failed login attempts. Please try again later.')",
             "type": "textarea",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_successmsg",
+            "name": "Success message (default = 'Authentication was successful. You will be automatically forwarded to the survey momentarily.')",
+            "type": "textarea",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_continuelabel",
+            "name": "Continue label (default = 'Continue to Survey')",
+            "type": "text",
             "repeatable": false
         },
         {
