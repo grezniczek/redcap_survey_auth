@@ -29,6 +29,11 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         // Only authenticate public surveys, i.e. when $record == null.
         if ($record !== null) return;
 
+        // This is needed for older versions of REDCap in order to write crytographic keys and lockouts to system settings.
+        if (method_exists($this, "disableUserBasedSettingPermissions")) {
+            $this->disableUserBasedSettingPermissions();
+        }
+
         $recordIdField = \REDCap::getRecordIdField();
 
         // Get the project's data dictionary for the current instrument and find the action tag.
@@ -67,11 +72,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
         // Success? If not, then authentication needs to be performed.
         if ($response["success"] !== true) {
-
-            // This is needed for older versions of REDCap in order to write crytographic keys and lockouts to system settings.
-            if (method_exists($this, "disableUserBasedSettingPermissions")) {
-                $this->disableUserBasedSettingPermissions();
-            }
 
             // Inject JavaScript and HTML.
             $js = file_get_contents(__DIR__ . "/surveyauth.js");
