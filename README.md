@@ -116,3 +116,4 @@ v1.1.1  | Add call to `disableUserBasedSettingPermissions()` in order to support
 v1.2.0  | This version does not perform AJAX requests any more and can operate (with limitations) without providing an API token.
 v1.2.1  | Bug fixes, more detailed logging.
 v1.2.2  | Fix a regression regarding `disableUserBasedSettingPermissions()` that was added in v1.1.1.
+v1.2.3  | Compatibility fix for older REDCap versions.
