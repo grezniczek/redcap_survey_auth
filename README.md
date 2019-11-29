@@ -55,9 +55,11 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 - **Submit label:** The label to be displayed on the submit button. Defaults to 'Submit'.
 
-- **Fail message:** A message that is displayed to the user in case the login fails. Defaults to 'Invalid username and/or password or access denied.'.
+- **Fail message:** A message that is displayed to the user in case the login fails. Defaults to 'Invalid username and/or password or access denied'.
 
-- **Lockout message:** A message that is displayed to the user in case of too many failed login attempts. Defaults to 'Too many failed login attempts. Please try again later.'.
+- **Lockout message:** A message that is displayed to the user in case of too many failed login attempts. Defaults to 'Too many failed login attempts. Please try again later'.
+
+- **Technical error message:** A message that is displayed to the user in case of a technical error that prevents completion of the authentication process. Defaults to 'A technical error prevented completion of the authentication process. Please notify the system administrator'.
 
 - **Success message** and **Continue label:** A message and button label that are displayed to the user after successful authentication. This is only relevant when using the advanced mode (i.e. when an API token is provided).
 
@@ -104,7 +106,6 @@ When _username_, _email_, _fullname_, or _timestamp_ are defined, the respective
 
 When a value for _success_ is defined, the field with the action tag will be set to this value. If used, the field should be set to @READONLY/@READONLY-SURVEY or @HIDDEN-SURVEY.
 
-
 ## [Changelog](#changelog)
 
 Release | Description
@@ -113,3 +114,4 @@ v1.0.0  | Initial release.
 v1.1.0  | Bugfixes (IE11 compatibility).
 v1.1.1  | Add call to disableUserBasedSettingPermissions() in order to support older REDCap versions. Fixed the bug that REDCap's LDAP configuration was not available (the module would only work for explicitly set LDAP configurations).
 v1.2.0  | This version does not perform AJAX requests any more and can operate (with limitations) without providing an API token.
+v1.2.1  | Bug fixes, more detailed logging.

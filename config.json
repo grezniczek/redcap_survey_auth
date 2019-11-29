@@ -82,6 +82,12 @@
             "repeatable": false
         },
         {
+            "key": "surveyauth_errormsg",
+            "name": "Technical error message (default = 'A technical error prevented completion of the authentication process. Please notify the system administrator.')",
+            "type": "textarea",
+            "repeatable": false
+        },
+        {
             "key": "surveyauth_successmsg",
             "name": "Success message (default = 'Authentication was successful. You will be automatically forwarded to the survey momentarily.')",
             "type": "textarea",

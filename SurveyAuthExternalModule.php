@@ -62,7 +62,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             else {
                 // Blob was valid, try to authenticate.
                 $response = $this->authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance);
-                
             }
         }
 
@@ -179,135 +178,143 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             "email" => null,
             "fullname" => null,
             "error" => null,
+            "log_error" => array()
         );
         $record_id = null;
         $ip = $_SERVER["REMOTE_ADDR"] . $_SERVER["HTTP_X_FORWARDED_FOR"];
 
-        do {
-            // Check lockout status.
-            $lockoutCount = $this->checkLockoutStatus($ip);
-            if ($lockoutCount > 2) {
-                $result["error"] = $this->settings->lockoutMsg;
-                $result["lockout"] = $this->settings->lockouttime * 60 * 1000;
-                break;
-            }
-            // Check credentials.
-            // First, let's see if the whitelist is active.
-            if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist)) {
-                break;
-            }
-            // Check custom credentials if enabled.
-            if (!$result["success"] && $this->settings->useCustom) {
-                $this->authenticateCustom($username, $password, $result);
-            }
-            // Check REDCap table-based users.
-            if (!$result["success"] && $this->settings->useTable) {
-                $this->authenticateTable($username, $password, $result);
-            }
-            // Check LDAP.
-            if (!$result["success"] && $this->settings->useLDAP) {
-                 $this->authenticateLDAP($username, $password, $result);
-            }
-            // Check other LDAP.
-            if (!$result["success"] && $this->settings->useOtherLDAP) {
-                $this->authenticateOtherLDAP($username, $password, $result);
-            }
-            if (!$result["success"]) {
-                if (!strlen($result["error"])) {
-                    $result["error"] = "Bad username / password.";
-                }
-                // Update lockout status.
-                $this->updateLockoutStatus($ip);
-                break;
-            }
-
-            // Login was successful.
-            if ($lockoutCount > 0) {
-                $this->clearLockoutStatus($ip);
-            }
-
-            // If a token is set, process action tag parameters and store any requested values.
-            $token = $this->settings->token;
-            if (strlen($token)) {
-
-                $result["mode"] = "token";
-                $recordIdField = \REDCap::getRecordIdField();
-
-                // Get data from data dictionary.
-                $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
-                $taggedFields= $this->getTaggedFields($dd, $recordIdField);
-                if (count($taggedFields) < 1) {
-                    $result["error"] = "Could not find a tagged field.";
+        try {
+            do {
+                // Check lockout status.
+                $lockoutCount = $this->checkLockoutStatus($ip);
+                if ($lockoutCount > 2) {
+                    $result["error"] = $this->settings->lockoutMsg;
+                    $result["lockout"] = $this->settings->lockouttime * 60 * 1000;
                     break;
                 }
-                $tf = $taggedFields[0];
-
-                // Add a new record and set data.
-                $apiUrl = APP_PATH_WEBROOT_FULL . "api/";
-                $guid = SurveyAuthInfo::GUID();
-                $result["timestamp"] = date($tf->dateFormat);
-                $payload = array();
-                $payload[$recordIdField] = "new-{$guid}";
-                if (strlen($tf->successField)) $payload[$tf->successField] = $tf->successValue;
-                // Add mapped data items.
-                foreach ($tf->map as $k => $v) {
-                    if (strlen($tf->map[$k])) $payload[$v] = $result[$k];
-                }
-                $payloadJson = json_encode(array($payload));
-                $request = array(
-                    'token' => $token,
-                    'content' => 'record',
-                    'format' => 'json',
-                    'type' => 'flat',
-                    'overwriteBehavior' => 'normal',
-                    'forceAutoNumber' => 'true',
-                    'data' => $payloadJson,
-                    'returnContent' => 'ids',
-                    'returnFormat' => 'json'
-                );
-                $ch = curl_init();
-                curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_VERBOSE, 0);
-                curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-                curl_setopt($ch, CURLOPT_AUTOREFERER, true);
-                curl_setopt($ch, CURLOPT_MAXREDIRS, 10);
-                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-                curl_setopt($ch, CURLOPT_FRESH_CONNECT, 1);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request, '', '&'));
-                $responseJson = curl_exec($ch);
-                curl_close($ch);
-                $response = json_decode($responseJson, true);
-                if (isset($response["error"])) {
-                    $result["error"] = $response["error"];
+                // Check credentials.
+                // First, let's see if the whitelist is active.
+                if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist)) {
                     break;
                 }
-                $record_id = $response[0];
-                $link = \REDCap::getSurveyLink($record_id, $instrument, $event_id, $repeat_instance);
-                $result["targetUrl"] = $link;
-            }
-            else {
-                // No token - simple mode.
-                $result["mode"] = "simple";
-            }
-            // We came to here, so all was good.
-            $result["success"] = true;
-        } while (false);
+                // Check custom credentials if enabled.
+                if (!$result["success"] && $this->settings->useCustom) {
+                    $this->authenticateCustom($username, $password, $result);
+                }
+                // Check REDCap table-based users.
+                if (!$result["success"] && $this->settings->useTable) {
+                    $this->authenticateTable($username, $password, $result);
+                }
+                // Check LDAP.
+                if (!$result["success"] && $this->settings->useLDAP) {
+                    $this->authenticateLDAP($username, $password, $result);
+                }
+                // Check other LDAP.
+                if (!$result["success"] && $this->settings->useOtherLDAP) {
+                    $this->authenticateOtherLDAP($username, $password, $result);
+                }
+                if (!$result["success"]) {
+                    $result["error"] = count($result["log_error"]) ? $this->settings->errorMsg : $this->settings->failMsg;
+                    // Update lockout status.
+                    $this->updateLockoutStatus($ip);
+                    break;
+                }
+                // Login was successful.
+                if ($lockoutCount > 0) {
+                    $this->clearLockoutStatus($ip);
+                }
+                // If a token is set, process action tag parameters and store any requested values.
+                $token = $this->settings->token;
+                if (strlen($token)) {
 
+                    $result["mode"] = "token";
+                    $recordIdField = \REDCap::getRecordIdField();
+
+                    // Get data from data dictionary.
+                    $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
+                    $taggedFields= $this->getTaggedFields($dd, $recordIdField);
+                    if (!count($taggedFields)) {
+                        $result["log_error"][] = "Could not find a field tagged with the @" . self::$ACTIONTAG . " action tag.";
+                        $result["mode"] = "simple";
+                    }
+                    else {
+                        $tf = $taggedFields[0];
+
+                        // Add a new record and set data.
+                        $apiUrl = APP_PATH_WEBROOT_FULL . "api/";
+                        $guid = SurveyAuthInfo::GUID();
+                        $result["timestamp"] = date($tf->dateFormat);
+                        $payload = array();
+                        $payload[$recordIdField] = "new-{$guid}";
+                        if (strlen($tf->successField)) $payload[$tf->successField] = $tf->successValue;
+                        // Add mapped data items.
+                        foreach ($tf->map as $k => $v) {
+                            if (strlen($tf->map[$k])) $payload[$v] = $result[$k];
+                        }
+                        $payloadJson = json_encode(array($payload));
+                        $request = array(
+                            'token' => $token,
+                            'content' => 'record',
+                            'format' => 'json',
+                            'type' => 'flat',
+                            'overwriteBehavior' => 'normal',
+                            'forceAutoNumber' => 'true',
+                            'data' => $payloadJson,
+                            'returnContent' => 'ids',
+                            'returnFormat' => 'json'
+                        );
+                        $ch = curl_init();
+                        curl_setopt($ch, CURLOPT_URL, $apiUrl);
+                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                        curl_setopt($ch, CURLOPT_VERBOSE, 0);
+                        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+                        curl_setopt($ch, CURLOPT_AUTOREFERER, true);
+                        curl_setopt($ch, CURLOPT_MAXREDIRS, 10);
+                        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+                        curl_setopt($ch, CURLOPT_FRESH_CONNECT, 1);
+                        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request, '', '&'));
+                        $responseJson = curl_exec($ch);
+                        curl_close($ch);
+                        $response = json_decode($responseJson, true);
+                        if (isset($response["error"])) {
+                            $result["success"] = false;
+                            $result["error"] = $this->settings->errorMsg;
+                            $result["log_error"][] = "Failed to create a new record: " . $response["error"];
+                            break;
+                        }
+                        $record_id = $response[0];
+                        $link = \REDCap::getSurveyLink($record_id, $instrument, $event_id, $repeat_instance);
+                        $result["targetUrl"] = $link;
+                    }
+                }
+                else {
+                    // No token - simple mode.
+                    $result["mode"] = "simple";
+                }
+            } while (false);
+        }
+        catch (\Exception $e) {
+            $result["success"] = false;
+            $result["error"] = $this->settings->errorMsg;
+            $result["log_error"][] = $e->getMessage();
+        }
         // Write a log entry.
         if ($this->settings->log == "all" || ($this->settings->log == "fail" && !$result["success"]) || ($this->settings->log == "success" && $result["success"])) {
+            $changes = $result["success"] ? "Successful authentication via {$result["method"]}" : "Failed or denied login attempt (IP: {$ip})";
+            if (count($result["log_error"])) {
+                $changes .= "\n" . join("\n", $result["log_error"]);
+            }
             $logData = array(
-                "action_description" => "SurveyAuth: Performed authentication operation for '{$username}'",
-                "changes_made" => $result["success"] ? "Successful" : "Failed/Denied",
-                "sql" => $result["error"],
+                "action_description" => "Survey Auth EM",
+                "changes_made" => $changes,
+                "sql" => null,
                 "record" => $record_id,
                 "event" => null,
                 "project_id" => $GLOBALS["project_id"]
             );
             \REDCap::logEvent($logData["action_description"], $logData["changes_made"], $logData["sql"], $logData["record"], $logData["event"], $logData["project_id"]);
         }
-
         // Return result.
         return $result;
     }
@@ -318,19 +325,19 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         try {
             if (\Authentication::verifyTableUsernamePassword($username, $password)) {
                 $result["success"] = true;
+                $result["method"] = "Table";
                 try {
                     $ui = \User::getUserInfo($username);
                     $result["email"] = $ui["user_email"];
                     $result["fullname"] = trim("{$ui["user_firstname"]} {$ui["user_lastname"]}");
-                    throw new \Exception("Test");
                 }
                 catch (\Exception $e) {
-                    $result["error"] = $e->getMessage();
+                    $result["log_error"][] = $e->getMessage();
                 }
             }
         }
         catch (\Exception $e) {
-            $result["error"] = $e->getMessage();
+            $result["log_error"][] = $e->getMessage();
         }
     }
 
@@ -339,6 +346,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $username = strtolower($username);
         if (isset($this->settings->customCredentials[$username]) && $this->settings->customCredentials[$username] == $password) {
             $result["success"] = true;
+            $result["method"] = "Custom";
         }
     }
 
@@ -348,25 +356,27 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $config = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : null;
         if ($config) {
             $this->doLDAPauth($username, $password, $config, $result);
+            if ($result["success"]) {
+                $result["method"] = "LDAP";
+            }
         }
         else {
-            $result["error"] = "REDCap LDAP not available.";
+            $result["log_error"][] = "REDCap LDAP not available.";
         }
     }
 
     private function authenticateOtherLDAP($username, $password, &$result) 
     {
-        $errors = array();
         if (count($this->settings->otherLDAPConfigs) < 1) {
-            $result["error"] = "No Other LDAP configuraations available.";
+            $result["log_error"][] = "No 'Other LDAP' configurations available.";
         }
         foreach ($this->settings->otherLDAPConfigs as $config) {
             $this->doLDAPauth($username, $password, $config, $result);
-            if (strlen($result["error"])) array_push($errors, $result["error"]);
-            $result["error"] = null;
-            if ($result["success"]) break;
+            if ($result["success"]) {
+                $result["method"] = "Other LDAP ({$config["host"]}:{$config["port"]})";
+                break;
+            }
         }
-        $result["error"] = join("\n", $errors);
     }
 
     //region LDAP
@@ -375,7 +385,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     {
         // As we rely on the ldap module, check that it has been loaded.
         if (!extension_loaded("ldap")) {
-            $result["error"] = "LDAP extension not loaded.";
+            $result["log_error"][] = "LDAP extension not loaded.";
             return;
         }
         $config = $this->mergeLDAPConfig($config);
@@ -487,12 +497,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                             }
                         }
                     }
-                } while (true); // ($config['try_all'] == true); 
+                } while (true); 
             }
             @ldap_unbind($ldap);
         }
         catch (\Exception $e) {
-            $result["error"] = "LDAP error: " . $e->getMessage();
+            $result["log_error"][] = "LDAP error: " . $e->getMessage();
         }
         finally {
             @ldap_close($ldap);
@@ -723,6 +733,7 @@ class SurveyAuthSettings
     public $lockoutMsg;
     public $lockouttime;
     public $successMsg;
+    public $errorMsg;
     public $continueLabel;
     public $blobSecret;
     public $blobHmac;
@@ -759,6 +770,7 @@ class SurveyAuthSettings
             $this->failMsg = $this->getValue("surveyauth_failmsg", "Invalid username and/or password or access denied.");
             $this->lockoutMsg = $this->getValue("surveyauth_lockoutmsg", "Too many failed login attempts. Please try again later.");
             $this->successMsg = $this->getValue("surveyauth_successmsg", "Authentication was successful. You will be automatically forwarded to the survey momentarily.");
+            $this->errorMsg = $this->getValue("surveyauth_errormsg", "A technical error prevented completion of the authentication process. Please notify the system administrator.");
             $this->continueLabel = $this->getValue("surveyauth_continuelabel", "Continue to Survey");
             $this->useTable = $this->getValue("surveyauth_usetable", false);
             $this->useLDAP = $this->getValue("surveyauth_useldap", false);
