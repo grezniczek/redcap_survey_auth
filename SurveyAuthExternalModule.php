@@ -13,14 +13,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     private $settings;
 
-    function __construct()
-    {
-        // Need to call parent constructor first!
-        parent::__construct();
-        // Initialize settings.
-        $this->settings = new SurveyAuthSettings($this);
-    }
-
     /**
      * Hook function that is executed for every survey page in projects where the module is enabled.
      */
@@ -42,6 +34,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         // If there is none, then there is nothing to do.
         if (!count($taggedFields)) return;
 
+        $this->settings = new SurveyAuthSettings($this);
+        
         // State management.
         $response = array ( 
             "success" => false,
@@ -185,7 +179,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             "log_error" => array()
         );
         $record_id = null;
-        $ip = $_SERVER["REMOTE_ADDR"] . $_SERVER["HTTP_X_FORWARDED_FOR"];
+        $ip = $_SERVER["REMOTE_ADDR"];
+        if (strlen($_SERVER["HTTP_X_FORWARDED_FOR"])) $ip .= $_SERVER["HTTP_X_FORWARDED_FOR"];
 
         try {
             do {
