@@ -353,15 +353,17 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     private function authenticateLDAP($username, $password, &$result) 
     {
         include APP_PATH_WEBTOOLS . 'ldap/ldap_config.php';
-        $config = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : null;
-        if ($config) {
+        $configs = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : array();
+        if (array_key_exists("url", $configs)) $configs = array ($configs);
+
+        foreach ($configs as $config) {
             $this->doLDAPauth($username, $password, $config, $result);
             if ($result["success"]) {
                 $result["method"] = "LDAP";
             }
         }
-        else {
-            $result["log_error"][] = "REDCap LDAP not available.";
+        if (!count($configs)) {
+            $result["log_error"][] = "No REDCap LDAP configurations are available.";
         }
     }
 
