@@ -11,6 +11,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     
     public static $ACTIONTAG = "SURVEY-AUTH";
 
+    /** @var SurveyAuthSettings Module Settings */
     private $settings;
 
     /**
@@ -352,15 +353,17 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     private function authenticateLDAP($username, $password, &$result) 
     {
         include APP_PATH_WEBTOOLS . 'ldap/ldap_config.php';
-        $config = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : null;
-        if ($config) {
+        $configs = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : array();
+        if (array_key_exists("url", $configs)) $configs = array ($configs);
+
+        foreach ($configs as $config) {
             $this->doLDAPauth($username, $password, $config, $result);
             if ($result["success"]) {
                 $result["method"] = "LDAP";
             }
         }
-        else {
-            $result["log_error"][] = "REDCap LDAP not available.";
+        if (!count($configs)) {
+            $result["log_error"][] = "No REDCap LDAP configurations are available.";
         }
     }
 
@@ -469,13 +472,18 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     if ($attributes = @ldap_get_attributes($ldap, $entryId)) {
                         if (is_array($attributes) && count($attributes) > 0) {
                             // Extract data.
-                            $lastname = (isset($attributes["sn"]) && $attributes["sn"]["count"] >= 1) ? $attributes["sn"][0] : "";
-                            $firstname = (isset($attributes["givenName"]) && $attributes["givenName"]["count"] >= 1) ? $attributes["givenName"][0] : "";
-                            $fullname = trim("{$firstname} {$lastname}");
-                            $email = (isset($attributes["email"]) && $attributes["email"]["count"] >= 1) ? $attributes["email"][0] : "";
-                            if (!strlen($email)) $email = (isset($attributes["mail"]) && $attributes["mail"]["count"] >= 1) ? $attributes["mail"][0] : "";
-                            if (strlen($email)) $result["email"] = strtolower($email);
-                            if (strlen($fullname)) $result["fullname"] = $fullname;
+                            $data = array();
+                            foreach (array_keys($this->settings->ldapMappings) as $key) {
+                                $data[$key] = "";
+                                foreach ($this->settings->ldapMappings[$key] as $attributeName) {
+                                    if (isset($attributes[$attributeName]) && $attributes[$attributeName]["count"] >= 1) {
+                                        $data[$key] = trim($attributes[$attributeName][0]);
+                                        break;
+                                    }
+                                }
+                            }
+                            $result["fullname"] = strlen($data["fullname"]) ? $data["fullname"] : trim("{$data["firstname"]} {$data["lastname"]}");
+                            $result["email"] = strtolower($data["email"]);
                         }
                     }
                     @ldap_free_result($resultId);
@@ -743,6 +751,12 @@ class SurveyAuthSettings
     public $useCustom;
     public $customCredentials;
     public $otherLDAPConfigs;
+    public $ldapMappings = array(
+        "email" => array(),
+        "fullname" => array(),
+        "firstname" => array(),
+        "lastname" => array()
+    );
     public $useWhitelist;
     public $whitelist;
     public $lockoutStatus;
@@ -777,6 +791,18 @@ class SurveyAuthSettings
             $this->useCustom = $this->getValue("surveyauth_usecustom", false);
             $this->otherLDAPConfigs = json_decode($this->getValue("surveyauth_otherldap", "[]"), true);
             if (!is_array($this->otherLDAPConfigs)) $this->otherLDAPConfigs = array();
+            $defaults = array(
+                "email" => "email,mail",
+                "fullname" => "",
+                "firstname" => "givenName",
+                "lastname" => "sn"
+            );
+            foreach (array_keys($defaults) as $key) {
+                foreach(explode(",", $this->getValue("surveyauth_ldapmap_{$key}", $defaults[$key])) as $item) {
+                    $item = trim($item);
+                    if (strlen($item)) $this->ldapMappings[$key][] = $item;
+                }
+            }
             $this->customCredentials = $this->parseCustomCredentials($this->getValue("surveyauth_custom", ""));
             $this->useWhitelist = $this->getValue("surveyauth_usewhitelist", false);
             $this->whitelist = $this->parseWhitelist($this->getValue("surveyauth_whitelist", ""));
