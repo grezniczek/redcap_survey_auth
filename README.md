@@ -90,6 +90,8 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
     ]
     ```
 
+  - **LDAP Attribute mappings:** When LDAP is enabled, custom attribute mappings for email, first, last, and full name can be set. These will be used when attempting to get email and full name of an authenticated user.
+
   - **Custom:** When selected, custom credentials can be entered into a text box. Type one username-password pair per line, separated by a colon (e.g. `UserXY:secret123`). Usernames are not case-sensitive (passwords are).
 
 - **Use Whitelist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully.
@@ -110,10 +112,11 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 Release | Description
 ------- | ---------------------
-v1.0.0  | Initial release.
-v1.1.0  | Bugfixes (IE11 compatibility).
-v1.1.1  | Add call to `disableUserBasedSettingPermissions()` in order to support older REDCap versions. Fixed the bug that REDCap's LDAP configuration was not available (the module would only work for explicitly set LDAP configurations).
-v1.2.0  | This version does not perform AJAX requests any more and can operate (with limitations) without providing an API token.
-v1.2.1  | Bug fixes, more detailed logging.
-v1.2.2  | Fix a regression regarding `disableUserBasedSettingPermissions()` that was added in v1.1.1.
+v1.2.4  | Add the option to use custom LDAP mappings for email and full name.
 v1.2.3  | Compatibility fix for older REDCap versions.
+v1.2.2  | Fix a regression regarding `disableUserBasedSettingPermissions()` that was added in v1.1.1.
+v1.2.1  | Bug fixes, more detailed logging.
+v1.2.0  | This version does not perform AJAX requests any more and can operate (with limitations) without providing an API token.
+v1.1.1  | Add call to `disableUserBasedSettingPermissions()` in order to support older REDCap versions. Fixed the bug that REDCap's LDAP configuration was not available (the module would only work for explicitly set LDAP configurations).
+v1.1.0  | Bugfixes (IE11 compatibility).
+v1.0.0  | Initial release.

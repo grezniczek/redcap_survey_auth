@@ -131,6 +131,54 @@
             "required": true
         },
         {
+            "key": "surveyauth_ldapmap_email",
+            "name": "LDAP: Attribute mapping for email (separate multiple names by commas; default: 'email,mail')",
+            "type": "text",
+            "branchingLogic": {
+                "type": "or",
+                "conditions": [
+                    { "field": "surveyauth_useldap", "value": true },
+                    { "field": "surveyauth_useotherldap", "value": true }
+                ]
+            }
+        },
+        {
+            "key": "surveyauth_ldapmap_fullname",
+            "name": "LDAP: Attribute mapping for full name (separate multiple names by commas)",
+            "type": "text",
+            "branchingLogic": {
+                "type": "or",
+                "conditions": [
+                    { "field": "surveyauth_useldap", "value": true },
+                    { "field": "surveyauth_useotherldap", "value": true }
+                ]
+            }
+        },
+        {
+            "key": "surveyauth_ldapmap_firstname",
+            "name": "LDAP: Attribute mapping for first name (separate multiple names by commas; default: 'givenName')",
+            "type": "text",
+            "branchingLogic": {
+                "type": "or",
+                "conditions": [
+                    { "field": "surveyauth_useldap", "value": true },
+                    { "field": "surveyauth_useotherldap", "value": true }
+                ]
+            }
+        },
+        {
+            "key": "surveyauth_ldapmap_lastname",
+            "name": "LDAP: Attribute mapping for last name (separate multiple names by commas; default: 'sn')",
+            "type": "text",
+            "branchingLogic": {
+                "type": "or",
+                "conditions": [
+                    { "field": "surveyauth_useldap", "value": true },
+                    { "field": "surveyauth_useotherldap", "value": true }
+                ]
+            }
+        },
+        {
             "key": "surveyauth_usecustom",
             "name": "Custom",
             "type": "checkbox"
