@@ -491,15 +491,58 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     if ($password != "") {
                         // Try binding with the supplied user credentials.
                         if (@ldap_bind($ldap, $userDn, $password)) {
-                            // Check group if appropiate
+                            // Check group if appropiate.
                             if (strlen($config["group"])) {
                                 // Check type of memberattr (dn or username).
                                 $inGroup = $this->checkGroup($ldap, $config, ($config['memberisdn']) ? $userDn : $username);
                                 $result["success"] = $inGroup;
-                                break;
                             } 
                             else {
                                 $result["success"] = true;
+                            }
+                            if ($result["success"]) {
+                                // Try to retrieve attributes while bound as the user.
+                                if (($resultId = @ldap_read($ldap, $userDn, $filter, $searchAttributes)) !== false) {
+                                    if (@ldap_count_entries($ldap, $resultId) >= 1) {
+                                        $first = true;
+                                        $entryId = null;
+                                        do {
+                                            // Get the user dn.
+                                            if ($first) {
+                                                $entryId = @ldap_first_entry($ldap, $resultId);
+                                                $first = false;
+                                            } 
+                                            else {
+                                                $entryId = @ldap_next_entry($ldap, $entryId);
+                                                if ($entryId === false)
+                                                    break;
+                                            }
+                                            // The dn should match the user's dn exactly.
+                                            if ($userDn != @ldap_get_dn($ldap, $entryId)) continue;
+                                            // Get attributes.
+                                            if ($attributes = @ldap_get_attributes($ldap, $entryId)) {
+                                                if (is_array($attributes) && count($attributes) > 0) {
+                                                    // Extract data.
+                                                    $data = array();
+                                                    foreach (array_keys($this->settings->ldapMappings) as $key) {
+                                                        $data[$key] = "";
+                                                        foreach ($this->settings->ldapMappings[$key] as $attributeName) {
+                                                            if (isset($attributes[$attributeName]) && $attributes[$attributeName]["count"] >= 1) {
+                                                                $data[$key] = trim($attributes[$attributeName][0]);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                    // Use data from here to set (overwrite) result if not empty.
+                                                    $fullname = strlen($data["fullname"]) ? $data["fullname"] : trim("{$data["firstname"]} {$data["lastname"]}");
+                                                    if (strlen($fullname)) $result["fullname"] = $fullname;
+                                                    if (strlen($data["email"])) $result["email"] = strtolower($data["email"]);
+                                                }
+                                            }
+                                        } while (true);
+                                    }
+                                    @ldap_free_result($resultId);
+                                }
                                 break;
                             }
                         }
