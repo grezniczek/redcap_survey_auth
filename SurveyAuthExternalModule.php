@@ -926,7 +926,7 @@ class SurveyAuthInfo
                             break;
                         } 
                         default: {
-                            if (in_array($key, $valid_field_names)) {
+                            if (in_array($value, $valid_field_names)) {
                                 $this->map[$key] = $value; 
                             }
                             break;
