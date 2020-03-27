@@ -112,6 +112,7 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 Release | Description
 ------- | ---------------------
+v1.2.6  | Bug fix: Fixed a bug that prevented the action tag from working properly.
 v1.2.5  | Enhancement: Improved strategy to obtain LDAP attributes.
 v1.2.4  | Add the option to use custom LDAP mappings for email and full name. Add support for multiple REDCap LDAP configurations.
 v1.2.3  | Compatibility fix for older REDCap versions.
