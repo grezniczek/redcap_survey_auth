@@ -76,6 +76,12 @@
             "repeatable": false
         },
         {
+            "key": "surveyauth_lockoutcount",
+            "name": "Lockout count (number of failed login attempts that trigger a lockout; use 0 to disable; default = 3)",
+            "type": "text",
+            "repeatable": false
+        },
+        {
             "key": "surveyauth_lockoutmsg",
             "name": "Lockout message (default = 'Too many failed login attempts. Please try again later.')",
             "type": "textarea",

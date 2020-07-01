@@ -188,7 +188,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             do {
                 // Check lockout status.
                 $lockoutCount = $this->checkLockoutStatus($ip);
-                if ($lockoutCount > 2) {
+                if ($this->settings->lockoutCount && $lockoutCount > $this->settings->lockoutCount - 1) {
                     $result["error"] = $this->settings->lockoutMsg;
                     $result["lockout"] = $this->settings->lockouttime * 60 * 1000;
                     break;
@@ -791,6 +791,7 @@ class SurveyAuthSettings
     public $passwordLabel;
     public $submitLabel;
     public $failMsg;
+    public $lockoutCount = 3;
     public $lockoutMsg;
     public $lockouttime;
     public $successMsg;
@@ -835,6 +836,14 @@ class SurveyAuthSettings
             $this->passwordLabel = $this->getValue("surveyauth_passwordlabel", "Password");
             $this->submitLabel = $this->getValue("surveyauth_submitlabel", "Submit");
             $this->failMsg = $this->getValue("surveyauth_failmsg", "Invalid username and/or password or access denied.");
+            $lockoutCount = $this->getValue("surveyauth_lockoutcount", "3");
+            if ($lockoutCount === "0") {
+                $this->lockoutCount = 0;
+            }
+            else if (isnumber($lockoutCount)) {
+                $lockoutCount = (int)($lockoutCount);
+                $this->lockoutCount = $lockoutCount > 0 ? $lockoutCount : 3;
+            }
             $this->lockoutMsg = $this->getValue("surveyauth_lockoutmsg", "Too many failed login attempts. Please try again later.");
             $this->successMsg = $this->getValue("surveyauth_successmsg", "Authentication was successful. You will be automatically forwarded to the survey momentarily.");
             $this->errorMsg = $this->getValue("surveyauth_errormsg", "A technical error prevented completion of the authentication process. Please notify the system administrator.");

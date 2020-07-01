@@ -57,6 +57,8 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 - **Fail message:** A message that is displayed to the user in case the login fails. Defaults to 'Invalid username and/or password or access denied'.
 
+- **Lockout count:** Sets the number of failed login attempts that will trigger a lockout. Set to 0 to disable lockout. Default = 3.
+
 - **Lockout message:** A message that is displayed to the user in case of too many failed login attempts. Defaults to 'Too many failed login attempts. Please try again later'.
 
 - **Technical error message:** A message that is displayed to the user in case of a technical error that prevents completion of the authentication process. Defaults to 'A technical error prevented completion of the authentication process. Please notify the system administrator'.
@@ -112,6 +114,7 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 Release | Description
 ------- | ---------------------
+v1.2.7  | Minor enhancements: Browser compatibility fixes, tabbing between inputs. Add option to control lockout.
 v1.2.6  | Bug fix: Fixed a bug that prevented the action tag from working properly.
 v1.2.5  | Enhancement: Improved strategy to obtain LDAP attributes.
 v1.2.4  | Add the option to use custom LDAP mappings for email and full name. Add support for multiple REDCap LDAP configurations.
