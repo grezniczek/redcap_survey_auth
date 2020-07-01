@@ -65,6 +65,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
         }
 
+        $logo = "";
+
         // Success? If not, then authentication needs to be performed.
         if ($response["success"] !== true) {
 
@@ -81,7 +83,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "random" => $this->genKey(16) // Add some random stuff.
             ));
             $isMobile = isset($GLOBALS["isMobileDevice"]) && $GLOBALS["isMobileDevice"];
-            $logo = "";
             if (is_numeric($GLOBALS["logo"])) {
                 //Set max-width for logo (include for mobile devices)
                 $logo_width = $isMobile ? '300' : '600';
