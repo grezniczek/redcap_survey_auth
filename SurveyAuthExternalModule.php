@@ -252,6 +252,16 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                         foreach ($tf->map as $k => $v) {
                             if (strlen($tf->map[$k])) $payload[$v] = $result[$k];
                         }
+                        // // Is this a repeating form?
+                        // global $Proj;
+                        // $repeating = $Proj->isRepeatingForm($event_id, $instrument);
+                        // if ($repeating) {
+                        //     $payload["redcap_repeat_instance"] = $repeat_instance;
+                        //     $payload["redcap_repeat_instrument"] = $instrument;
+                        // }
+                        // Unfortunately, this is not enough. While this works, there will be quirks in the UI.
+                        // Apparently, the redcap_surveys_response table is not written correctly after switching to 
+                        // "real" survey code. No idea how to fix this (easily).
                         $payloadJson = json_encode(array($payload));
                         $request = array(
                             'token' => $token,
