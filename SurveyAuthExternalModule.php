@@ -19,9 +19,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1) 
     {
-        // Only authenticate public surveys, i.e. when $record == null.
-        if ($record !== null) return;
-
         // This is needed for older versions of REDCap in order to write crytographic keys and lockouts to system settings.
         if (method_exists($this, "disableUserBasedSettingPermissions")) {
             $this->disableUserBasedSettingPermissions();
@@ -36,6 +33,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         if (!count($taggedFields)) return;
 
         $this->settings = new SurveyAuthSettings($this);
+
+        // Only authenticate public surveys, i.e. when $record == null.
+        if (!$this->settings->allownonpublic && $record !== null) return;
         
         // State management.
         $response = array ( 
@@ -815,6 +815,7 @@ class SurveyAuthSettings
     public $useWhitelist;
     public $whitelist;
     public $lockoutStatus;
+    public $allownonpublic;
 
     private $m;
 
@@ -827,6 +828,7 @@ class SurveyAuthSettings
         $lockouttime = $module->getSystemSetting("surveyauth_lockouttime");
         $this->lockouttime = is_numeric($lockouttime) ? $lockouttime * 1 : 5;
         $this->lockoutStatus = $this->lockouttime === 0 ? array() : json_decode($module->getSystemSetting("surveyauth_lockouts"), true);
+        $this->allownonpublic = $module->getSystemSetting("surveyauth_allow_nonpublic");
         // Only in the context of a project
         if ($this->isProject) {
             $this->log = $this->getValue("surveyauth_log", "all");
