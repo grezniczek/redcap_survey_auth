@@ -19,6 +19,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1) 
     {
+        session_start();
+        
         // This is needed for older versions of REDCap in order to write crytographic keys and lockouts to system settings.
         if (method_exists($this, "disableUserBasedSettingPermissions")) {
             $this->disableUserBasedSettingPermissions();
@@ -30,12 +32,33 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
         $taggedFields = $this->getTaggedFields($dd, $recordIdField);
         // If there is none, then there is nothing to do.
-        if (!count($taggedFields)) return;
+        if (!count($taggedFields)) {
+            session_unset();
+            session_destroy();
+            return;
+        }
 
         $this->settings = new SurveyAuthSettings($this);
+        
+        // Only authenticate public surveys (i.e. when $record == null) unless
+        // system settings allow it.
+        if ($this->settings->allownonpublic === FALSE && $record !== null) {
+            session_unset();
+            session_destroy();
+            return;
+        }
 
-        // Only authenticate public surveys, i.e. when $record == null.
-        if (!$this->settings->allownonpublic && $record !== null) return;
+        // Don't authenticate if already authenticated
+        $hash_matches = in_array($survey_hash, [$_SESSION["SURVEY_HASH"], $_SESSION["NEW_SURVEY_HASH"]]);
+        if ($hash_matches && $_SESSION["SUCCESS"]) {
+            session_unset();
+            session_destroy();
+            return;
+        }
+
+
+        // Keep session record value current
+        $_SESSION["RECORD"] = $record ?? $_SESSION["RECORD"];
         
         // State management.
         $response = array ( 
@@ -61,7 +84,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
             else {
                 // Blob was valid, try to authenticate.
-                $response = $this->authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance);
+                $record = $record ?? $blob["record"] ?? $_SESSION["RECORD"];
+                $response = $this->authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance, $record);
             }
         }
 
@@ -80,6 +104,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "instrument" => $instrument,
                 "event_id" => $event_id,
                 "repeat_instance" => $repeat_instance,
+                "record" => $record,
                 "random" => $this->genKey(16) // Add some random stuff.
             ));
             $isMobile = isset($GLOBALS["isMobileDevice"]) && $GLOBALS["isMobileDevice"];
@@ -133,6 +158,11 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             // Success == true means that authentication has succeded.
             if ($response["mode"] == "token") {
                 // In token mode, the record has been created. Thus, display a forwarder to the record-specific survey id.
+                
+                $_SESSION["RECORD"] = $response["record"];
+                $_SESSION["SURVEY_HASH"] = $survey_hash;
+                $_SESSION["SUCCESS"] = $response["success"];
+                
                 $template = file_get_contents(__DIR__ . "/forward.html");
                 $replace = array(
                     "{LOGO}" => $logo,
@@ -170,7 +200,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     /**
      * Determines, whether the credentials are valid.
      */
-    function authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance) 
+    function authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance, $record) 
     {
         $result = array (
             "success" => false,
@@ -240,18 +270,20 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     }
                     else {
                         $tf = $taggedFields[0];
-
-                        // Add a new record and set data.
-                        $apiUrl = APP_PATH_WEBROOT_FULL . "api/";
-                        $guid = SurveyAuthInfo::GUID();
+                        
+                        // If this is a nonpublic survey, $record will be set so
+                        // just update that record. Otherwise, create new record. 
+                        $record = $record ?? $this->addAutoNumberedRecord();
+                        
                         $result["timestamp"] = date($tf->dateFormat);
                         $payload = array();
-                        $payload[$recordIdField] = "new-{$guid}";
+                        $payload[$recordIdField] = $record;
                         if (strlen($tf->successField)) $payload[$tf->successField] = $tf->successValue;
                         // Add mapped data items.
                         foreach ($tf->map as $k => $v) {
                             if (strlen($tf->map[$k])) $payload[$v] = $result[$k];
                         }
+                        
                         // // Is this a repeating form?
                         // global $Proj;
                         // $repeating = $Proj->isRepeatingForm($event_id, $instrument);
@@ -262,41 +294,24 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                         // Unfortunately, this is not enough. While this works, there will be quirks in the UI.
                         // Apparently, the redcap_surveys_response table is not written correctly after switching to 
                         // "real" survey code. No idea how to fix this (easily).
+
                         $payloadJson = json_encode(array($payload));
-                        $request = array(
-                            'token' => $token,
-                            'content' => 'record',
-                            'format' => 'json',
-                            'type' => 'flat',
-                            'overwriteBehavior' => 'normal',
-                            'forceAutoNumber' => 'true',
-                            'data' => $payloadJson,
-                            'returnContent' => 'ids',
-                            'returnFormat' => 'json'
-                        );
-                        $ch = curl_init();
-                        curl_setopt($ch, CURLOPT_URL, $apiUrl);
-                        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                        curl_setopt($ch, CURLOPT_VERBOSE, 0);
-                        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-                        curl_setopt($ch, CURLOPT_AUTOREFERER, true);
-                        curl_setopt($ch, CURLOPT_MAXREDIRS, 10);
-                        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-                        curl_setopt($ch, CURLOPT_FRESH_CONNECT, 1);
-                        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($request, '', '&'));
-                        $responseJson = curl_exec($ch);
-                        curl_close($ch);
-                        $response = json_decode($responseJson, true);
+                        $response = \REDCap::saveData($project_id, 'json', $payloadJson);
                         if (isset($response["error"])) {
                             $result["success"] = false;
                             $result["error"] = $this->settings->errorMsg;
                             $result["log_error"][] = "Failed to create a new record: " . $response["error"];
                             break;
                         }
-                        $record_id = $response[0];
-                        $link = \REDCap::getSurveyLink($record_id, $instrument, $event_id, $repeat_instance);
+                        
+                        $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance);
                         $result["targetUrl"] = $link;
+                        $result["record"] = $record;
+                        $record_id = $record;
+
+                        // Grab survey hash from survey link
+                        parse_str(parse_url($link, PHP_URL_QUERY), $parsed_qs); 
+                        $_SESSION["NEW_SURVEY_HASH"] = $parsed_qs["s"];     
                     }
                 }
                 else {
