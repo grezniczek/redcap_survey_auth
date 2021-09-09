@@ -4,6 +4,8 @@ namespace RUB\SurveyAuthExternalModule;
 
 use ExternalModules\AbstractExternalModule;
 
+use function Sabre\Uri\split;
+
 /**
  * ExternalModule class for survey authentication.
  */
@@ -73,7 +75,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             // Inject JavaScript and HTML.
             $js = file_get_contents(__DIR__ . "/surveyauth.js");
             print "<script>\n$js\n</script>";
-            $queryUrl = APP_PATH_SURVEY_FULL . "?s=" . $survey_hash;
+            $queryUrl = "{$_SERVER["REQUEST_SCHEME"]}://{$_SERVER["HTTP_HOST"]}{$_SERVER["REQUEST_URI"]}";
             $blob = $this->toSecureBlob(array(
                 "project_id" => $project_id,
                 "survey_hash" => $survey_hash,
@@ -296,6 +298,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                         }
                         $record_id = $response[0];
                         $link = \REDCap::getSurveyLink($record_id, $instrument, $event_id, $repeat_instance);
+                        $hash = explode("?s=", $link, 2)[1];
+                        $link = explode("?s=", "{$_SERVER["REQUEST_SCHEME"]}://{$_SERVER["HTTP_HOST"]}{$_SERVER["REQUEST_URI"]}", 2)[0];
+                        $link = "{$link}?s={$hash}";
                         $result["targetUrl"] = $link;
                     }
                 }

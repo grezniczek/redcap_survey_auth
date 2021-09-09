@@ -114,6 +114,7 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 Release | Description
 ------- | ---------------------
+v1.2.8  | Updated how some urls are constructed.
 v1.2.7  | Minor enhancements: Browser compatibility fixes, tabbing between inputs. Add option to control lockout.
 v1.2.6  | Bug fix: Fixed a bug that prevented the action tag from working properly.
 v1.2.5  | Enhancement: Improved strategy to obtain LDAP attributes.
