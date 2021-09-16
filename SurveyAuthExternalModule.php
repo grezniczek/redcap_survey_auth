@@ -14,6 +14,25 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     /** @var SurveyAuthSettings Module Settings */
     private $settings;
 
+    function redcap_module_system_change_version($version, $old_version) {
+        $new = explode(".", str_replace("v", "", $version), 2);
+        $new = ($new[0].".".str_replace(".", "", $new[1])) * 1;
+        $old = explode(".", str_replace("v", "", $old_version), 2);
+        $old = ($old[0].".".str_replace(".", "", $old[1])) * 1;
+        if ($old < 1.30) {
+            // Upgrade all projects with a token to canwrite and delete the token
+            $projects = $this->getProjectsWithModuleEnabled();
+            foreach ($projects as $pid) {
+                $token = $this->getProjectSetting("surveyauth_token", $pid);
+                if (!empty($token)) {
+                    $this->setProjectSetting("surveyauth_canwrite", true, $pid);
+                }
+                // Remove in any case
+                $this->removeProjectSetting("surveyauth_token", $pid);
+            }
+        }
+    }
+
     /**
      * Hook function that is executed for every survey page in projects where the module is enabled.
      */
@@ -26,7 +45,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $at_blob = $this->base64_url_decode($_GET["__at"]);
             $at_decoded = $this->fromSecureBlob($at_blob);
             if ($at_decoded == "%%".$survey_hash) {
-                // Modify form action to include token
+                // Modify form action to include auth info
                 print "<script>$(function() { $('#form').attr('action', $('#form').attr('action') + '&__at=".$this->base64_url_encode($at_blob)."'); }); </script>";
                 return;
             } 
@@ -252,11 +271,11 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 else {
                     // Use first, any further are ignored
                     $tf = $taggedFields[0];
+                    // If this is a nonpublic survey, $record will be set so
+                    // just update that record. Otherwise, create new record. 
+                    $record = $record ?? $this->addAutoNumberedRecord();
                     // Anything to do?
-                    if (count($tf->map)) {
-                        // If this is a nonpublic survey, $record will be set so
-                        // just update that record. Otherwise, create new record. 
-                        $record = $record ?? $this->addAutoNumberedRecord();
+                    if ($this->settings->canwrite && count($tf->map)) {
                         $result["timestamp"] = date($tf->dateFormat);
                         $payload = array();
                         $payload[$recordIdField] = $record;
@@ -274,13 +293,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                             $result["log_error"][] = "Failed to create a new record: " . $response["error"];
                             break;
                         }
-                        // Get link to survey and add auth token
-                        $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance);
-                        $survey_hash = explode("?s=", $link, 2)[1];
-                        $at = $this->toSecureBlob("%%".$survey_hash);
-                        $result["targetUrl"] = $link . "&__at=" . $this->base64_url_encode($at);
-                        $result["record"] = $record;
                     }
+                    // Get link to survey and add auth info
+                    $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance);
+                    $survey_hash = explode("?s=", $link, 2)[1];
+                    $at = $this->toSecureBlob("%%".$survey_hash);
+                    $result["targetUrl"] = $link . "&__at=" . $this->base64_url_encode($at);
+                    $result["record"] = $record;
                 }
             } while (false);
         }
@@ -763,8 +782,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
  */
 class SurveyAuthSettings 
 {
+    public $canwrite = false;
     public $log;
-    public $token;
     public $text;
     public $usernameLabel;
     public $passwordLabel;
@@ -811,7 +830,7 @@ class SurveyAuthSettings
         // Only in the context of a project
         if ($this->isProject) {
             $this->log = $this->getValue("surveyauth_log", "all");
-            $this->token = $this->getValue("surveyauth_token", null);
+            $this->canwrite = $this->getValue("surveyauth_canwrite", false);
             $this->text = $this->getValue("surveyauth_text", "Login is required to continue.");
             $this->usernameLabel = $this->getValue("surveyauth_usernamelabel", "Username");
             $this->passwordLabel = $this->getValue("surveyauth_passwordlabel", "Password");
@@ -893,7 +912,6 @@ class SurveyAuthSettings
  */
 class SurveyAuthInfo 
 {
-    public $guid;
     public $successField;
     public $successValue;
     public $map = array();
@@ -910,7 +928,6 @@ class SurveyAuthInfo
                 array_push($valid_field_names, $f->field_name);
             }
         }
-        $this->guid = SurveyAuthInfo::GUID();
         $this->fieldName = $fieldInfo->field_name;
         // Extract and parse parameters.
         $re = '/@' . SurveyAuthExternalModule::$ACTIONTAG . '\((?\'config\'.+=.+)\)/m';
@@ -974,17 +991,6 @@ class SurveyAuthInfo
             array_push($pairs, "{$k}={$v}");
         }
         return join(",", $pairs);
-    }
-
-    /**
-     * Generates a GUID in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.
-     */
-    public static function GUID() 
-    {
-        if (function_exists('com_create_guid') === true) {
-            return strtolower(trim(com_create_guid(), '{}'));
-        }
-        return strtolower(sprintf('%04X%04X-%04X-%04X-%04X-%04X%04X%04X', mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(16384, 20479), mt_rand(32768, 49151), mt_rand(0, 65535), mt_rand(0, 65535), mt_rand(0, 65535)));
     }
 }
 
