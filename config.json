@@ -4,13 +4,19 @@
     "description": "Adds authentication to surveys. <strong><a href=\"https://github.com/grezniczek/redcap_survey_auth\">See full documentation here</a></strong>.",
     "framework-version": 6,
     "permissions": [
-        "redcap_survey_page_top"
+        "redcap_survey_page_top",
+        "redcap_module_system_change_version"
     ],
     "authors": [
         {
             "name": "Günther Rezniczek",
             "email": "guenther.rezniczek@rub.de",
             "institution": "Ruhr-Universität Bochum"
+        },
+        {
+            "name": "Andrew Poppe",
+            "email": "andrew.poppe@yale.edu",
+            "institution": "Yale Center for Clinical Investigation"
         }
     ],
     "system-settings": [
@@ -18,6 +24,15 @@
             "key": "surveyauth_lockouttime",
             "name": "Lockout time (minutes; default = 5 minutes)",
             "type": "text",
+            "repeatable": false
+        },
+        {
+            "key": "surveyauth_allow_nonpublic",
+            "name": "Allow module to authenticate on non-public surveys",
+            "type": "checkbox",
+            "choices": [
+                { "value": "1", "name": "Allow" }
+            ],
             "repeatable": false
         }
     ],
@@ -36,14 +51,9 @@
             "repeatable": false
         },
         {
-            "key": "surveyauth_tokeninfo",
-            "name": "Below, an API token with 'create records' permission can be provided. When provided, the module can write data (as specified by the action tag parameters) to a (newly created) record before forwarding the user to the survey. Otherwise, no data is written to the record and the user is simply let through to the regular public survey. In any case, authentication is logged to the events table.",
-            "type": "descriptive"
-        },
-        {
-            "key": "surveyauth_token",
-            "name": "API Token",
-            "type": "text",
+            "key": "surveyauth_canwrite",
+            "name": "<b>Allow writing</b> - When this is enabled, the module can write data (as specified by the action tag parameters) to a (newly created) record before forwarding the user to the survey. Otherwise, no data is written to the record and the user is simply forwarded to the survey after successful authentiation. In any case, authentication is logged to the events table.",
+            "type": "checkbox",
             "repeatable": false
         },
         {

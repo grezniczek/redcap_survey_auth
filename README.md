@@ -2,8 +2,6 @@
 
 A REDCap External Module that adds authentication to surveys.
 
-**ATTENTION** - Version 1.2.0, while compatible with previous setups, introduces some major changes to the module's technical implementation. In short: The module does not use AJAX requests to perform authentication any more, but handles all on the server. This is a huge benefit, as no other endpoints besides `/surveys/` are required, and thus the module can be used in instances that only expose the survey endpoint to the Internet.
-
 See the [changelog](#changelog) for information on release updates.
 
 ## Purpose / Use Case
@@ -16,13 +14,15 @@ Possible use cases may be incident reports, internal orders or requests for good
 
 When enabled for a survey, a login page will be displayed as first page of a survey that the user needs to complete before being able to proceed to the survey (similar to the reCAPTCHA feature introduced in REDCap 8.11).
 
+From version 1.3.0 of this module, this now works for **non-public surveys** in addition to **public surveys**.
+
 ![Screenshot](surveyauth.png)
 
 Survey users can be authenticated against REDCap Users (table-based authentication), any number or LDAP servers, and/or against a list or username/password entries provided in the module's project configuration.
 
 ## Requirements
 
-REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33).
+REDCap 10.4.1 Standard / REDCap 10.6.1 LTS or newer.
 
 ## Installation
 
@@ -45,7 +45,7 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
   - _Successful attempts:_ Log entries will be produced for successful logins.
   - _All:_ Log entries will be produced for both types of events.
 
-- **API Token:** An API token of a user who can create new records. This is required for advanced functionality of the module, where data about the user can be entered into the record (as set by the mapping in the action tag - see below). If no token is provided, then such data cannot be captured and any mappings that may be specified in the action tag are ignored.
+- **Allow writing:** When this is enabled, the module can write data (as specified by the action tag parameters) to a (newly created) record before forwarding the user to the survey. Otherwise, no data is written to the record and the user is simply forwarded to the survey after successful authentiation. In any case, authentication is logged to the events table.
 
 - **Text displayed above username/password fields:** Optionally enter some prompt that is displayed to the survey user.
 
@@ -63,7 +63,7 @@ REDCAP 8.1.0 or newer (tested with REDCap 8.11.9 on a system running PHP 7.0.33)
 
 - **Technical error message:** A message that is displayed to the user in case of a technical error that prevents completion of the authentication process. Defaults to 'A technical error prevented completion of the authentication process. Please notify the system administrator'.
 
-- **Success message** and **Continue label:** A message and button label that are displayed to the user after successful authentication. This is only relevant when using the advanced mode (i.e. when an API token is provided).
+- **Success message** and **Continue label:** A message and button label that are displayed to the user after successful authentication. This is only relevant when writing by the module is allowed (see above).
 
 - **Authentication methods:** Any of the following methods can be used for authentication. Note the order, in which authentication is attempted: Custom > Table > Other LDAP > LDAP.
 
@@ -114,6 +114,7 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 Release | Description
 ------- | ---------------------
+v1.3.0  | New feature: Login for non-public surveys. Simply add the @SURVEY-AUTH action tag (this must first be enabled in the system settings of the module). Enhancement: The token is not required any longer, but instead replaced by a setting that controls whether the module may write data to a record (during an upgrade, tokens are deleted and write mode set to ON).
 v1.2.9  | Updated framework to v6 and updated REDCap version requirements (minimal: 10.4.1 Standard, 10.6.4 LTS).
 v1.2.8  | Updated how some urls are constructed. Fixes disabled submit button when login data is entered without user input (e.g., by password managers).
 v1.2.7  | Minor enhancements: Browser compatibility fixes, tabbing between inputs. Add option to control lockout.
