@@ -45,8 +45,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $at_blob = $this->base64_url_decode($_GET["__at"]);
             $at_decoded = $this->fromSecureBlob($at_blob);
             if ($at_decoded == "%%".$survey_hash) {
+                $new_blob = $this->base64_url_encode($this->toSecureBlob("%%".$survey_hash));
                 // Modify form action to include auth info
-                print "<script>$(function() { $('#form').attr('action', $('#form').attr('action') + '&__at=".$this->base64_url_encode($at_blob)."'); }); </script>";
+                print "<script>$(function() { $('#form').attr('action', $('#form').attr('action') + '&__at={$new_blob}'); }); </script>";
                 return;
             } 
         }
@@ -54,7 +55,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         // This is needed for older versions of REDCap in order to write crytographic keys and lockouts to system settings.
         if (method_exists($this, "disableUserBasedSettingPermissions")) {
             $this->disableUserBasedSettingPermissions();
-        }    
+        }
 
         // Get the project's data dictionary for the current instrument and find the action tag.
         $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
