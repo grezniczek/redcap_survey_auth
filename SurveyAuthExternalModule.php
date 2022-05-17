@@ -464,20 +464,10 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 // User not found.
             } 
             elseif (@ldap_count_entries($ldap, $resultId) >= 1) { 
-                $first = true;
-                $entryId = null;
-                do {
+                $entryId = @ldap_first_entry($ldap, $resultId);
+                while ($entryId !== false) {
                     // Get the user dn.
-                    if ($first) {
-                        $entryId = @ldap_first_entry($ldap, $resultId);
-                        $first = false;
-                    } 
-                    else {
-                        $entryId = @ldap_next_entry($ldap, $entryId);
-                        if ($entryId === false)
-                            break;
-                    }
-                    $userDn  = @ldap_get_dn($ldap, $entryId);
+                    $userDn = @ldap_get_dn($ldap, $entryId);
                     // Get attributes.
                     if ($attributes = @ldap_get_attributes($ldap, $entryId)) {
                         if (is_array($attributes) && count($attributes) > 0) {
@@ -514,19 +504,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                                 // Try to retrieve attributes while bound as the user.
                                 if (($resultId = @ldap_read($ldap, $userDn, $filter, $searchAttributes)) !== false) {
                                     if (@ldap_count_entries($ldap, $resultId) >= 1) {
-                                        $first = true;
-                                        $entryId = null;
-                                        do {
+                                        $entryId = @ldap_first_entry($ldap, $resultId);
+                                        while ($entryId !== false) {
                                             // Get the user dn.
-                                            if ($first) {
-                                                $entryId = @ldap_first_entry($ldap, $resultId);
-                                                $first = false;
-                                            } 
-                                            else {
-                                                $entryId = @ldap_next_entry($ldap, $entryId);
-                                                if ($entryId === false)
-                                                    break;
-                                            }
                                             // The dn should match the user's dn exactly.
                                             if ($userDn != @ldap_get_dn($ldap, $entryId)) continue;
                                             // Get attributes.
@@ -549,7 +529,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                                                     if (strlen($data["email"])) $result["email"] = strtolower($data["email"]);
                                                 }
                                             }
-                                        } while (true);
+                                            $entryId = @ldap_next_entry($ldap, $entryId);
+                                        }
                                     }
                                     @ldap_free_result($resultId);
                                 }
@@ -557,7 +538,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                             }
                         }
                     }
-                } while (true); 
+                    $entryId = @ldap_next_entry($ldap, $entryId);
+                }
             }
             @ldap_unbind($ldap);
         }
