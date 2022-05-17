@@ -14,6 +14,7 @@
 	],
 	"settings": {
 		"breadcrumbs.icons": true,
-		"git.ignoreLimitWarning": true
+		"git.ignoreLimitWarning": true,
+		"php.suggest.basic": false
 	}
 }

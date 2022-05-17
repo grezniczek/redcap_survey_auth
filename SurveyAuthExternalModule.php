@@ -1,6 +1,4 @@
-<?php
-namespace RUB\SurveyAuthExternalModule;
-
+<?php namespace RUB\SurveyAuthExternalModule;
 
 use ExternalModules\AbstractExternalModule;
 
@@ -103,8 +101,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
             // Inject JavaScript and HTML.
             $js = file_get_contents(__DIR__ . "/surveyauth.js");
-            print "<script>\n$js\n</script>";
-            $queryUrl = "{$_SERVER["REQUEST_SCHEME"]}://{$_SERVER["HTTP_HOST"]}{$_SERVER["REQUEST_URI"]}";
+            $orig_query_params = explode("?", $_SERVER["REQUEST_URI"], 2)[1] ?? "";
+            $orig_query_params = strlen($orig_query_params) ? "?$orig_query_params" : "";
+            $queryUrl = APP_PATH_SURVEY_FULL . $orig_query_params;
             $blob = $this->toSecureBlob(array(
                 "project_id" => $project_id,
                 "survey_hash" => $survey_hash,
