@@ -57,7 +57,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
         // Get the project's data dictionary for the current instrument and find the action tag.
         $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
-        $taggedFields = $this->getTaggedFields($dd);
+        $taggedFields = $this->getTaggedFields($dd, $project_id, $record, $event_id, $instrument, $repeat_instance);
         // If there is none, then there is nothing to do.
         if (!count($taggedFields)) return;
 
@@ -184,11 +184,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     /**
      * A helper function that extracts parts of the data dictionary with the module's action tag.
      */
-    private function getTaggedFields($dataDictionary) 
+    private function getTaggedFields($dataDictionary, $project_id, $record, $event_id, $instrument, $repeat_instance) 
     {
+        $record = $record ?? '1';
         $fields = array();
         foreach ($dataDictionary as $fieldInfo) {
-            if (strpos($fieldInfo->field_annotation, "@".SurveyAuthExternalModule::$ACTIONTAG)) {
+            $evaluatedFieldAnnotation = \Form::replaceIfActionTag($fieldInfo->field_annotation, $project_id, $record, $event_id, $instrument, $repeat_instance);
+            if (strpos($evaluatedFieldAnnotation, "@".SurveyAuthExternalModule::$ACTIONTAG)) {
                 array_push($fields, new SurveyAuthInfo($fieldInfo, $dataDictionary));
             }
         }
@@ -264,7 +266,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 $recordIdField = \REDCap::getRecordIdField();
                 // Get the data dictionary.
                 $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
-                $taggedFields= $this->getTaggedFields($dd);
+                $taggedFields = $this->getTaggedFields($dd, $project_id, $record, $event_id, $instrument, $repeat_instance);
                 if (!count($taggedFields)) {
                     $result["log_error"][] = "Could not find a field tagged with the @" . self::$ACTIONTAG . " action tag.";
                 }
