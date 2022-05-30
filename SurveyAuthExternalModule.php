@@ -208,7 +208,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     {
         $fields = array();
         foreach ($dataDictionary as $fieldInfo) {
-            $evaluatedFieldAnnotation = \Form::replaceIfActionTag($fieldInfo->field_annotation, $project_id, $record, $event_id, $instrument, $repeat_instance);
+            $evaluatedFieldAnnotation = \Survey::isPublicSurvey() ? $fieldInfo->field_annotation : \Form::replaceIfActionTag($fieldInfo->field_annotation, $project_id, $record, $event_id, $instrument, $repeat_instance);
             if (strpos($evaluatedFieldAnnotation, "@".SurveyAuthExternalModule::$ACTIONTAG)) {
                 array_push($fields, new SurveyAuthInfo($fieldInfo, $dataDictionary));
             }
