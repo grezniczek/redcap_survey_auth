@@ -36,6 +36,17 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1) 
     {
+        if (!empty($response_id)) {
+            $participant_id = $GLOBALS["participant_id"]; // \Survey::getParticipantIdFromRecordSurveyEvent($record, $survey_id, $event_id, $repeat_instance);
+            if ($record == null) {
+                $record = \Survey::getRecordFromPartId([$participant_id])[$participant_id];
+            }
+        }
+        if ($record != null) {
+            // We need to set this in order to get @IF action tag parsing to work. Duh.
+            $GLOBALS["hidden_edit"] = 1;
+        }
+
         $this->settings = new SurveyAuthSettings($this);
 
         // Check if auth has already happened, in which case we stop any further processing
@@ -113,6 +124,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "record" => $record,
                 "random" => $this->genKey(16) // Add some random stuff.
             ));
+            $Proj = new \Project($project_id);
+            $response_hash = "";
+            if (!empty($response_id)) {
+                $response_hash = \Survey::encryptResponseHash($response_id, $participant_id);
+                $response_hash = "<input type=\"hidden\" name=\"__response_hash__\" value=\"{$response_hash}\">";
+            }
+            $record_id = $record == null ? "" : "<input type=\"hidden\" name=\"{$Proj->table_pk}\" value=\"{$record}\">";
             $isMobile = isset($GLOBALS["isMobileDevice"]) && $GLOBALS["isMobileDevice"];
             if (is_numeric($GLOBALS["logo"])) {
                 //Set max-width for logo (include for mobile devices)
@@ -155,6 +173,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "{FAILMSG}" => $response["error"],
                 "{ERROR}" => strlen($response["error"]) ? "block" : "none",
                 "{BLOB}" => $blob,
+                "{RECORDID}" => $record_id,
+                "{RESPONSEHASH}" => $response_hash,
             );
             print str_replace(array_keys($replace), array_values($replace), $template);
             // No further processing (i.e. do not let REDCap render the survey page).
@@ -186,7 +206,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     private function getTaggedFields($dataDictionary, $project_id, $record, $event_id, $instrument, $repeat_instance) 
     {
-        $record = $record ?? '1';
         $fields = array();
         foreach ($dataDictionary as $fieldInfo) {
             $evaluatedFieldAnnotation = \Form::replaceIfActionTag($fieldInfo->field_annotation, $project_id, $record, $event_id, $instrument, $repeat_instance);
