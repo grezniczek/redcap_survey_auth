@@ -162,6 +162,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $mobile = $isMobile ? "_mobile" : "";
             $template = file_get_contents(__DIR__ . "/ui{$mobile}.html");
             $replace = array(
+                "{JS}" => $js,
                 "{LOGO}" => $logo,
                 "{PREFIX}" => $this->PREFIX,
                 "{QUERYURL}" => $queryUrl,
