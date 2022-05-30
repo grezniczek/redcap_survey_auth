@@ -38,13 +38,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     {
         if (!empty($response_id)) {
             $participant_id = $GLOBALS["participant_id"]; // \Survey::getParticipantIdFromRecordSurveyEvent($record, $survey_id, $event_id, $repeat_instance);
-            if ($record == null) {
-                $record = \Survey::getRecordFromPartId([$participant_id])[$participant_id];
+            $record = \Survey::getRecordFromPartId([$participant_id])[$participant_id];
+            if ($record != null) {
+                // We can be sure that the record exists! So we can safely do this:
+                // We must set this to something other than 0 in order to get @IF action tag parsing to work. Duh.
+                $GLOBALS["hidden_edit"] = 1;
             }
-        }
-        if ($record != null) {
-            // We need to set this in order to get @IF action tag parsing to work. Duh.
-            $GLOBALS["hidden_edit"] = 1;
         }
 
         $this->settings = new SurveyAuthSettings($this);
