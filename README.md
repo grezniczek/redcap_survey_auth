@@ -110,6 +110,11 @@ When _username_, _email_, _fullname_, or _timestamp_ are defined, the respective
 
 When a value for _success_ is defined, the field with the action tag will be set to this value. If used, the field should be set to @READONLY/@READONLY-SURVEY or @HIDDEN-SURVEY.
 
+### Combining **@SURVEY-AUTH** with **@IF**
+
+The **@SURVEY-AUTH** action tag can be used inside **@IF** (since v1.4.0), but only on non-public surveys.
+For public surveys, as long as **@SURVEY-AUTH** is present _anywhere_ (even when inside the _false part_ of an @IF), the survey taker will need to log in before being able to proceed.
+
 ## [Changelog](#changelog)
 
 Release | Description
