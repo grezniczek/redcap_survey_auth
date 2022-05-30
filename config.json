@@ -2,7 +2,7 @@
     "name": "Survey Auth",
     "namespace": "RUB\\SurveyAuthExternalModule",
     "description": "Adds authentication to surveys. <strong><a href=\"https://github.com/grezniczek/redcap_survey_auth\">See full documentation here</a></strong>.",
-    "framework-version": 6,
+    "framework-version": 9,
     "permissions": [
         "redcap_survey_page_top",
         "redcap_module_system_change_version"
@@ -239,7 +239,7 @@
     "compatibility": {
         "php-version-min": "5.6.0",
         "php-version-max": "",
-        "redcap-version-min": "10.4.1",
+        "redcap-version-min": "12.0.7",
         "redcap-version-max": ""
      }
 }

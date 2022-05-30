@@ -22,7 +22,7 @@ Survey users can be authenticated against REDCap Users (table-based authenticati
 
 ## Requirements
 
-REDCap 10.4.1 Standard / REDCap 10.6.1 LTS or newer.
+REDCap 12.0.7 Standard / REDCap 12.0.8 LTS or newer.
 
 ## Installation
 
@@ -114,6 +114,7 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 Release | Description
 ------- | ---------------------
+v1.4.0  | Compatiblity fix: @SURVEY-AUTH can now be used inside @IF; Bugfix: Some JavaScript was missing from the login page; Minimum REDCap version is 12.0.7.
 v1.3.1  | Changed the way the url for login form submission is generated.
 v1.3.0  | New feature: Login for non-public surveys. Simply add the @SURVEY-AUTH action tag (this must first be enabled in the system settings of the module). Enhancement: The token is not required any longer, but instead replaced by a setting that controls whether the module may write data to a record (during an upgrade, tokens are deleted and write mode set to ON).
 v1.2.9  | Updated framework to v6 and updated REDCap version requirements (minimal: 10.4.1 Standard, 10.6.4 LTS).
