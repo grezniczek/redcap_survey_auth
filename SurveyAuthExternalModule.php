@@ -295,6 +295,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     // If this is a nonpublic survey, $record will be set so
                     // just update that record. Otherwise, create new record. 
                     $record = $record ?? $this->addAutoNumberedRecord();
+                    $record_created = false;
                     // Anything to do?
                     if ($this->settings->canwrite && count($tf->map)) {
                         $result["timestamp"] = date($tf->dateFormat);
@@ -314,9 +315,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                             $result["log_error"][] = "Failed to create a new record: " . $response["error"];
                             break;
                         }
+                        else {
+                            $record_created = true;
+                        }
                     }
                     // Get link to survey and add auth info
-                    $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance);
+                    $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance, $project_id, $record_created);
                     $survey_hash = explode("?s=", $link, 2)[1];
                     $at = $this->toSecureBlob("%%".$survey_hash);
                     $result["targetUrl"] = $link . "&__at=" . $this->base64_url_encode($at);
