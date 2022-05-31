@@ -41,9 +41,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $record = \Survey::getRecordFromPartId([$participant_id])[$participant_id];
             if ($record != null) {
                 // We can be sure that the record exists! So we can safely do this:
-                // We must set this to something other than 0 in order to get @IF action tag parsing to work. Duh.
+                // We must set this to something other than 0 in order to get @IF action tag parsing to work (Form::evaluateIfActionTag() relies on this global).
                 $GLOBALS["hidden_edit"] = 1;
             }
+        }
+        if (\Survey::isPublicSurvey() && $record == null) {
+            // This is a hack to work around a bug in Form::evaluateIfActionTag() /REDCap::evaluateLogic() 
+            $record = "__some_record_id_that_should_definitely_NOT_exist___" . \Crypto::getGuid();
         }
 
         $this->settings = new SurveyAuthSettings($this);
@@ -208,7 +212,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     {
         $fields = array();
         foreach ($dataDictionary as $fieldInfo) {
-            $evaluatedFieldAnnotation = \Survey::isPublicSurvey() ? $fieldInfo->field_annotation : \Form::replaceIfActionTag($fieldInfo->field_annotation, $project_id, $record, $event_id, $instrument, $repeat_instance);
+            $evaluatedFieldAnnotation = \Form::replaceIfActionTag($fieldInfo->field_annotation, $project_id, $record, $event_id, $instrument, $repeat_instance);
             if (strpos($evaluatedFieldAnnotation, "@".SurveyAuthExternalModule::$ACTIONTAG)) {
                 array_push($fields, new SurveyAuthInfo($fieldInfo, $dataDictionary));
             }
@@ -292,6 +296,10 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 else {
                     // Use first, any further are ignored
                     $tf = $taggedFields[0];
+                    // If this is a public survey, we need to set $record to null
+                    if (\Survey::isPublicSurvey()) {
+                        $record = null;
+                    }
                     // If this is a nonpublic survey, $record will be set so
                     // just update that record. Otherwise, create new record. 
                     $record = $record ?? $this->addAutoNumberedRecord();

@@ -112,13 +112,13 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 ### Combining **@SURVEY-AUTH** with **@IF**
 
-The **@SURVEY-AUTH** action tag can be used inside **@IF** (since v1.4.0), but only on non-public surveys.
-For public surveys, as long as **@SURVEY-AUTH** is present _anywhere_ (even when inside the _false part_ of an @IF), the survey taker will need to log in before being able to proceed.
+The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note that in public surveys, the record does not exist yet, and does any logic should be restricted to record-independent elements, such as e.g. the [arm-number], [arm-label] or the aggregate smart variables.
 
 ## [Changelog](#changelog)
 
 Release | Description
 ------- | ---------------------
+v1.4.1  | Bugfix: @SURVEY-AUTH with @IF works now in public surveys.
 v1.4.0  | Compatiblity fix: @SURVEY-AUTH can now be used inside @IF; Bugfix: Some JavaScript was missing from the login page; Minimum REDCap version is 12.0.7.
 v1.3.1  | Changed the way the url for login form submission is generated.
 v1.3.0  | New feature: Login for non-public surveys. Simply add the @SURVEY-AUTH action tag (this must first be enabled in the system settings of the module). Enhancement: The token is not required any longer, but instead replaced by a setting that controls whether the module may write data to a record (during an upgrade, tokens are deleted and write mode set to ON).
