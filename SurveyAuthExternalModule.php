@@ -71,10 +71,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         // If there is none, then there is nothing to do.
         if (!count($taggedFields)) return;
 
-        // Only authenticate public surveys (i.e. when $record == null) 
-        // unless system settings allow it.
-        if ($record != null && !$this->settings->allownonpublic) return;
-
         // Default response (unless changed)
         $response = array ( 
             "success" => false,
@@ -820,7 +816,6 @@ class SurveyAuthSettings
     public $useWhitelist;
     public $whitelist;
     public $lockoutStatus;
-    public $allownonpublic;
 
     private $m;
 
@@ -833,7 +828,6 @@ class SurveyAuthSettings
         $lockouttime = $module->getSystemSetting("surveyauth_lockouttime");
         $this->lockouttime = is_numeric($lockouttime) ? $lockouttime * 1 : 5;
         $this->lockoutStatus = $this->lockouttime === 0 ? array() : json_decode($module->getSystemSetting("surveyauth_lockouts"), true);
-        $this->allownonpublic = $module->getSystemSetting("surveyauth_allow_nonpublic");
         // Only in the context of a project
         if ($this->isProject) {
             $this->log = $this->getValue("surveyauth_log", "all");

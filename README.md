@@ -118,7 +118,7 @@ The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note tha
 
 Release | Description
 ------- | ---------------------
-v1.4.2  | Bugfix: @SURVEY-AUTH now works in multi-arm projects.
+v1.4.2  | Bugfix: @SURVEY-AUTH now works in multi-arm projects. Change: Removed system option to turn off @SURVEY-AUTH on non-public surveys.
 v1.4.1  | Bugfix: @SURVEY-AUTH with @IF works now in public surveys.
 v1.4.0  | Compatiblity fix: @SURVEY-AUTH can now be used inside @IF; Bugfix: Some JavaScript was missing from the login page; Minimum REDCap version is 12.0.7.
 v1.3.1  | Changed the way the url for login form submission is generated.
