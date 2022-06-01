@@ -25,15 +25,6 @@
             "name": "Lockout time (minutes; default = 5 minutes)",
             "type": "text",
             "repeatable": false
-        },
-        {
-            "key": "surveyauth_allow_nonpublic",
-            "name": "Allow module to authenticate on non-public surveys",
-            "type": "checkbox",
-            "choices": [
-                { "value": "1", "name": "Allow" }
-            ],
-            "repeatable": false
         }
     ],
     "project-settings": [
