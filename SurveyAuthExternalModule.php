@@ -119,13 +119,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "record" => $record,
                 "random" => $this->genKey(16) // Add some random stuff.
             ));
-            $Proj = new \Project($project_id);
             $response_hash = "";
             if (!empty($response_id)) {
                 $response_hash = \Survey::encryptResponseHash($response_id, $participant_id);
                 $response_hash = "<input type=\"hidden\" name=\"__response_hash__\" value=\"{$response_hash}\">";
             }
-            $record_id = $record == null ? "" : "<input type=\"hidden\" name=\"{$Proj->table_pk}\" value=\"{$record}\">";
+            $record_id_field = \REDCap::getRecordIdField();
+            $record_id = $record == null ? "" : "<input type=\"hidden\" name=\"{$record_id_field}\" value=\"{$record}\">";
             $isMobile = isset($GLOBALS["isMobileDevice"]) && $GLOBALS["isMobileDevice"];
             if (is_numeric($GLOBALS["logo"])) {
                 //Set max-width for logo (include for mobile devices)
@@ -206,7 +206,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         foreach ($dataDictionary as $fieldInfo) {
             $evaluatedFieldAnnotation = \Form::replaceIfActionTag($fieldInfo->field_annotation, $project_id, $record ?? "1", $event_id, $instrument, $repeat_instance);
             if (strpos($evaluatedFieldAnnotation, "@".SurveyAuthExternalModule::$ACTIONTAG)) {
-                array_push($fields, new SurveyAuthInfo($fieldInfo, $dataDictionary));
+                array_push($fields, new SurveyAuthInfo($fieldInfo->field_name, $evaluatedFieldAnnotation, $dataDictionary));
             }
         }
         return $fields;
@@ -278,8 +278,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     $this->clearLockoutStatus($ip);
                 }
                 // Determine, whether any data should be written to the form 
-                $recordIdField = \REDCap::getRecordIdField();
-                // Get the data dictionary.
                 $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
                 $taggedFields = $this->getTaggedFields($dd, $project_id, $record, $event_id, $instrument, $repeat_instance);
                 if (!count($taggedFields)) {
@@ -288,24 +286,82 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 else {
                     // Use first, any further are ignored
                     $tf = $taggedFields[0];
-                    // If this is a nonpublic survey, $record will be set so
-                    // just update that record. Otherwise, create new record. 
-                    $record = $record ?? $this->addAutoNumberedRecord();
                     $record_created = false;
                     // Anything to do?
                     if ($this->settings->canwrite && count($tf->map)) {
+                        // If this is a nonpublic survey, $record will be set so. Otherwise, we have to get it after saving
+                        $new_record = $record == null;
+                        if ($new_record) {
+                            // Use "NEW" - it will be overwritten later
+                            $record = "NEW";
+                        }
                         $result["timestamp"] = date($tf->dateFormat);
-                        $payload = array();
-                        $payload[$recordIdField] = $record;
-                        if (strlen($tf->successField)) $payload[$tf->successField] = $tf->successValue;
+                        $data_values = array();
+                        if (strlen($tf->successField)) $data_values[$tf->successField] = $tf->successValue;
                         // Add mapped data items.
                         foreach ($tf->map as $k => $v) {
-                            if (strlen($tf->map[$k])) $payload[$v] = $result[$k];
+                            if (strlen($tf->map[$k])) $data_values[$v] = $result[$k];
                         }
-                        // And save
-                        $payloadJson = json_encode(array($payload));
-                        $response = \REDCap::saveData($project_id, 'json', $payloadJson);
+                        // Prepare data object for REDCap::saveData
+                        $Proj = new \Project($project_id);
+                        if ($Proj->isRepeatingEvent($event_id)) {
+                            $data_to_save = array(
+                                $record => array(
+                                    "repeat_instances" => array(
+                                        $event_id => array(
+                                            "" => array(
+                                                $repeat_instance => $data_values
+                                            )
+                                        )
+                                    )
+                                )
+                            );
+                        }
+                        else if ($Proj->isRepeatingForm($event_id, $instrument)) {
+                            $data_to_save = array(
+                                $record => array(
+                                    "repeat_instances" => array(
+                                        $event_id => array(
+                                            $instrument => array(
+                                                $repeat_instance => $data_values
+                                            )
+                                        )
+                                    )
+                                )
+                            );
+                        }
+                        else {
+                            $data_to_save = array(
+                                $record => array(
+                                    $event_id => $data_values
+                                )
+                            );
+                        }
+                        $response = \REDCap::saveData(
+                            $project_id,       // project_id
+                            'array',           // dataFormat
+                            $data_to_save,     // data
+                            'normal',          // overwriteBehavior
+                            null,              // dateFormat
+                            null,              // type (eav, flat)
+                            null,              // group_id
+                            true,              // dataLogging
+                            true,              // performAutoCalc
+                            true,              // commitData
+                            false,             // logAsAutoCalculations
+                            true,              // skipCalcFields
+                            [],                // changeReasons
+                            false,             // returnDataComparisonArray
+                            true,              // skipFileUploadFields
+                            false,             // removeLockedFields
+                            $new_record,       // addingAutoNumberedRecords
+                            true,              // bypassPromisCheck
+                            null,              // csvDelimiter
+                            false,             // bypassEconsentProtection
+                            null               // loggingUser
+                        );
                         if (isset($response["error"])) {
+                            if ($new_record) $record = null;
                             $result["success"] = false;
                             $result["error"] = $this->settings->errorMsg;
                             $result["log_error"][] = "Failed to create a new record: " . $response["error"];
@@ -313,11 +369,21 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                         }
                         else {
                             $record_created = true;
+                            if ($new_record) {
+                                $record = $response["ids"][$record];
+                            }
                         }
                     }
                     // Get link to survey and add auth info
-                    $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance, $project_id, $record_created);
-                    $survey_hash = explode("?s=", $link, 2)[1];
+                    if ($record == null) {
+                        $survey_id = \Survey::getSurveyId($instrument);
+                        $survey_hash = \Survey::getSurveyHash($survey_id, $event_id);
+                        $link = APP_PATH_SURVEY_FULL . "?s={$survey_hash}";
+                    }
+                    else {
+                        $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance, $project_id, $record_created);
+                        $survey_hash = explode("?s=", $link, 2)[1];
+                    }
                     $at = $this->toSecureBlob("%%".$survey_hash);
                     $result["targetUrl"] = $link . "&__at=" . $this->base64_url_encode($at);
                     $result["record"] = $record;
@@ -920,7 +986,7 @@ class SurveyAuthInfo
 
     private $ALLOWEDMAPPINGS = array("success", "username", "email", "fullname", "timestamp");
 
-    function __construct($fieldInfo, $dd) 
+    function __construct($field_name, $misc, $dd) 
     {
         $recordIdField = \REDCap::getRecordIdField();
         $valid_field_names = array ();
@@ -929,19 +995,18 @@ class SurveyAuthInfo
                 array_push($valid_field_names, $f->field_name);
             }
         }
-        $this->fieldName = $fieldInfo->field_name;
-        // Extract and parse parameters.
-        $re = '/@' . SurveyAuthExternalModule::$ACTIONTAG . '\((?\'config\'.+=.+)\)/m';
-        preg_match_all($re, $fieldInfo->field_annotation, $matches, PREG_SET_ORDER, 0);
-        if (count($matches)) {
-            foreach (explode(",", $matches[0]["config"]) as $config) {
+        $this->fieldName = $field_name;
+        // Extract and parse parameters
+        $at_params = \Form::getValueInParenthesesActionTag($misc, "@".SurveyAuthExternalModule::$ACTIONTAG);
+        if (!empty($at_params)) {
+            foreach (explode(",", $at_params) as $config) {
                 $config = explode("=", trim($config), 2);
                 $key = strtolower(trim($config[0]));
                 $value = $config[1];
                 if (in_array($key, $this->ALLOWEDMAPPINGS, true)) {
                     switch($key) {
                         case "success": {
-                            $this->successField = $fieldInfo->field_name;
+                            $this->successField = $field_name;
                             $this->successValue = $value;
                             break;
                         } 
