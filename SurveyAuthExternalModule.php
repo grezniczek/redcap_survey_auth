@@ -995,7 +995,6 @@ class SurveyAuthInfo
                 array_push($valid_field_names, $f->field_name);
             }
         }
-        $this->fieldName = $field_name;
         // Extract and parse parameters
         $at_params = \Form::getValueInParenthesesActionTag($misc, "@".SurveyAuthExternalModule::$ACTIONTAG);
         if (!empty($at_params)) {
