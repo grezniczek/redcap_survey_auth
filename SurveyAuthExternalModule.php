@@ -81,6 +81,14 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         if (isset($_POST["{$this->PREFIX}-username"]) && 
             isset($_POST["{$this->PREFIX}-password"]) &&
             isset($_POST["{$this->PREFIX}-blob"])) {
+            // Band-aid fix: Remove log entry with clear text password from redcap_log_view table
+            $delete_log = $this->query(
+                "DELETE FROM `redcap_log_view` WHERE `project_id` = ? AND `event` = 'PAGE_VIEW' AND `form_name` = ? AND `miscellaneous` LIKE '// POST%[redcap_survey_auth-password]%'",
+                [
+                    $project_id,
+                    $instrument
+                ]
+            );
             // Extract data from POST.
             $username = $_POST["{$this->PREFIX}-username"];
             $password = $_POST["{$this->PREFIX}-password"];
