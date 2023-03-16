@@ -861,6 +861,7 @@ class SurveyAuthSettings
 {
     public $canwrite = false;
     public $log;
+    public $ldapLogging;
     public $text;
     public $usernameLabel;
     public $passwordLabel;
@@ -905,6 +906,7 @@ class SurveyAuthSettings
         // Only in the context of a project
         if ($this->isProject) {
             $this->log = $this->getValue("surveyauth_log", "all");
+            $this->ldapLogging = $this->getValue("surveyauth_ladaplogging", false) == true;
             $this->canwrite = $this->getValue("surveyauth_canwrite", false);
             $this->text = $this->getValue("surveyauth_text", "Login is required to continue.");
             $this->usernameLabel = $this->getValue("surveyauth_usernamelabel", "Username");

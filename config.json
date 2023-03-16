@@ -139,6 +139,26 @@
             "required": true
         },
         {
+            "key": "surveyauth_ladaplogging",
+            "name": "Extended LDAP logging (use for troubleshooting only)",
+            "type": "checkbox",
+            "branchingLogic": {
+                "type": "or",
+                "conditions": [
+                    {
+                        "field": "surveyauth_useotherldap",
+                        "op": "=",
+                        "value": true
+                    },
+                    {
+                        "field": "surveyauth_useldap",
+                        "op": "=",
+                        "value": true
+                    }
+                ]
+            }
+        },
+        {
             "key": "surveyauth_ldapmap_email",
             "name": "LDAP: Attribute mapping for email (separate multiple names by commas; default: 'email,mail')",
             "type": "text",
