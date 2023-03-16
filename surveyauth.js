@@ -49,7 +49,7 @@ var RUBSurveyAuth = function() {
             if (username == '' || pwd == '') {
                 return false;
             }
-            form.submit();
+            form.trigger('submit');
         }
     }
 }();
