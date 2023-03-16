@@ -96,7 +96,7 @@ REDCap 12.0.7 Standard / REDCap 12.0.8 LTS or newer.
 
   - **Custom:** When selected, custom credentials can be entered into a text box. Type one username-password pair per line, separated by a colon (e.g. `UserXY:secret123`). Usernames are not case-sensitive (passwords are).
 
-- **Use Whitelist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully.
+- **Use Allowlist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully.
 
 ### @SURVEY-AUTH Action Tag
 
