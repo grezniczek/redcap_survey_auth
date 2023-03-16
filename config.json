@@ -204,17 +204,17 @@
         },
         {
             "key": "surveyauth_whitelistinfo",
-            "name": "Whitelisting can be activated. When active, only users in the whitelist can authenticate successfully. All others are denied (an empty whitelist has a deny-all-effect).",
+            "name": "An allowlist can be used. When active, only users in this list can authenticate successfully. All others are denied (an empty allowlist has a deny-all-effect).",
             "type": "descriptive"
         },
         {
             "key": "surveyauth_usewhitelist",
-            "name": "Use Whitelist",
+            "name": "Use Allowlist",
             "type": "checkbox"
         },
         {
             "key": "surveyauth_whitelist",
-            "name": "Whitelist (one username per line)",
+            "name": "Allowlist (one username per line)",
             "type": "textarea",
             "branchingLogic": {
                 "field": "surveyauth_usewhitelist",
