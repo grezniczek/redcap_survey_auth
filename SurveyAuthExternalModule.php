@@ -46,6 +46,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
         }
 
+        // If this is not the first page of a survey, then do nothing.
+        if ($_GET["__page__"] > 1) return;
+
         $this->settings = new SurveyAuthSettings($this);
 
         // Check if auth has already happened, in which case we stop any further processing

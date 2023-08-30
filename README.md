@@ -10,6 +10,11 @@ In some cases it may be useful to present users with a data entry form but not c
 
 Possible use cases may be incident reports, internal orders or requests for goods or services, etc.
 
+## Warning
+
+Survey Auth is currently **not** compatible with some survey features such as _Save and Continue_.  
+To work around this, use Survey Auth on an entry survey and use the auto-continue feature to forward the user to the actual survey after authentication.
+
 ## Effect
 
 When enabled for a survey, a login page will be displayed as first page of a survey that the user needs to complete before being able to proceed to the survey (similar to the reCAPTCHA feature introduced in REDCap 8.11).
@@ -118,6 +123,7 @@ The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note tha
 
 Release | Description
 ------- | ---------------------
+v1.4.5  | Add support for multi-page surveys<br>Add warning that _Save and Return_ is not currently supported.
 v1.4.4  | Critical bug fix: Surveys would be marked as completed before actually getting displayed. This was an unintended side effect of the v1.4.3 "fix". The log leak, for now, cannot be prevent, but the module now immediately sanitizes the `redcap_log_view` table by deleting any such log entries (the delete query is limited to the specific project and instrument).
 v1.4.3  | Critical security bug fix: REDCap logged the POST request, including the clear-text password, in `redcap_log_view`. Run `DELETE FROM redcap_log_view WHERE miscellaneous LIKE "// POST%[redcap_survey_auth-password]%"` against your database to sanitize the table!
 v1.4.2  | Bugfix: @SURVEY-AUTH now works in multi-arm projects. Change: Removed system option to turn off @SURVEY-AUTH on non-public surveys.
