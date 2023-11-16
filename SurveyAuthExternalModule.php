@@ -640,8 +640,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         catch (\Exception $e) {
             $result["log_error"][] = "LDAP error: " . $e->getMessage();
         }
-        finally {
-            @ldap_close($ldap);
+        // Close a potentially open connection
+        try {
+            @ldap_unbind($ldap);
+        }
+        catch (\Throwable $t) { 
+            // Ignore 
         }
     }
 
