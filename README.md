@@ -118,6 +118,7 @@ The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note tha
 
 Release | Description
 ------- | ---------------------
+v1.4.5  | Fix a potential LDAP error when using PHP8.1+
 v1.4.4  | Critical bug fix: Surveys would be marked as completed before actually getting displayed. This was an unintended side effect of the v1.4.3 "fix". The log leak, for now, cannot be prevent, but the module now immediately sanitizes the `redcap_log_view` table by deleting any such log entries (the delete query is limited to the specific project and instrument).
 v1.4.3  | Critical security bug fix: REDCap logged the POST request, including the clear-text password, in `redcap_log_view`. Run `DELETE FROM redcap_log_view WHERE miscellaneous LIKE "// POST%[redcap_survey_auth-password]%"` against your database to sanitize the table!
 v1.4.2  | Bugfix: @SURVEY-AUTH now works in multi-arm projects. Change: Removed system option to turn off @SURVEY-AUTH on non-public surveys.
