@@ -631,6 +631,15 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 }
             }
             @ldap_unbind($ldap);
+            // Optional fallback mapping of username and email from REDCap's user table
+            if ($this->settings->fallbackToTableUserInfo && (empty($result["fullname"]) || empty($result["email"]))) {
+                $sql = "SELECT `user_email`, `user_firstname`, `user_lastname` FROM redcap_user_information WHERE `username` = ? LIMIT 1";
+                $q = $this->query($sql, [$result["username"]]);
+                if ($row = $q->fetch_assoc()) {
+                    if (empty($result["fullname"])) $result["fullname"] = trim("{$row["user_firstname"]} {$row["user_lastname"]}");
+                    if (empty($result["email"])) $result["email"] = $row["user_email"];
+                }
+            }
         }
         catch (\Exception $e) {
             $result["log_error"][] = "LDAP error: " . $e->getMessage();

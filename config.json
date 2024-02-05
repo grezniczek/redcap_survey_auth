@@ -187,6 +187,18 @@
             }
         },
         {
+            "key":"surveyauth_ldap_uifallback",
+            "name":"Fall back to retrieving user information from REDCap's user table when no values are obtained from LDAP attributes",
+            "type": "checkbox",
+            "branchingLogic": {
+                "type": "or",
+                "conditions": [
+                    { "field": "surveyauth_useldap", "value": true },
+                    { "field": "surveyauth_useotherldap", "value": true }
+                ]
+            }            
+        },
+        {
             "key": "surveyauth_usecustom",
             "name": "Custom",
             "type": "checkbox"

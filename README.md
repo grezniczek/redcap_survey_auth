@@ -94,6 +94,8 @@ REDCap 12.0.7 Standard / REDCap 12.0.8 LTS or newer.
 
   - **LDAP Attribute mappings:** When LDAP is enabled, custom attribute mappings for email, first, last, and full name can be set. These will be used when attempting to get email and full name of an authenticated user.
 
+  - **Fall back to retrieving user information from REDCap's user table when no values are obtained from LDAP attributes:** When enabled and full name or  Fall back to retrieving user information from REDCap's user table when no values are obtained from LDAP attributes
+
   - **Custom:** When selected, custom credentials can be entered into a text box. Type one username-password pair per line, separated by a colon (e.g. `UserXY:secret123`). Usernames are not case-sensitive (passwords are).
 
 - **Use Allowlist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully.
@@ -118,6 +120,7 @@ The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note tha
 
 Release | Description
 ------- | ---------------------
+v1.5.0  | LDAP attributes: Support fallback to REDCap's user table for email and full name.
 v1.4.5  | Fix a potential LDAP error when using PHP8.1+
 v1.4.4  | Critical bug fix: Surveys would be marked as completed before actually getting displayed. This was an unintended side effect of the v1.4.3 "fix". The log leak, for now, cannot be prevent, but the module now immediately sanitizes the `redcap_log_view` table by deleting any such log entries (the delete query is limited to the specific project and instrument).
 v1.4.3  | Critical security bug fix: REDCap logged the POST request, including the clear-text password, in `redcap_log_view`. Run `DELETE FROM redcap_log_view WHERE miscellaneous LIKE "// POST%[redcap_survey_auth-password]%"` against your database to sanitize the table!
