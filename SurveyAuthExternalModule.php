@@ -631,6 +631,24 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 }
             }
             @ldap_unbind($ldap);
+
+            // Retrieve data from redcap_user_information instead of mapping attributes
+            // https://github.com/grezniczek/redcap_survey_auth/issues/12
+            if ($this->settings->ldapNoMapping) {
+
+                $sql = 'SELECT user_email,user_firstname,user_lastname FROM redcap_user_information WHERE username = ?';
+                $user_info_result = $this->query($sql, [$result["username"]]);
+        
+                while($row = $user_info_result->fetch_array()){
+                    $user_info = $row;
+                }
+
+                $fullname = $user_info["user_firstname"] . " " . $user_info["user_lastname"];
+                $email = $user_info["user_email"];
+                if (strlen($fullname)) $result["fullname"] = $fullname;
+                if (strlen($email)) $result["email"] = strtolower($email);
+            }
+
         }
         catch (\Exception $e) {
             $result["log_error"][] = "LDAP error: " . $e->getMessage();

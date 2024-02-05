@@ -139,6 +139,18 @@
             "required": true
         },
         {
+            "key":"surveyauth_ldap_nomap",
+            "name":"Retrieve additional user data stored by REDCap when not obtainable from LDAP attributes",
+            "type": "checkbox",
+            "branchingLogic": {
+                "type": "or",
+                "conditions": [
+                    { "field": "surveyauth_useldap", "value": true },
+                    { "field": "surveyauth_useotherldap", "value": true }
+                ]
+            }            
+        },
+        {
             "key": "surveyauth_ldapmap_email",
             "name": "LDAP: Attribute mapping for email (separate multiple names by commas; default: 'email,mail')",
             "type": "text",

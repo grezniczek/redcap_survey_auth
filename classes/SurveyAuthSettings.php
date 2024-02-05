@@ -26,6 +26,7 @@ class SurveyAuthSettings {
     public $useCustom;
     public $customCredentials;
     public $otherLDAPConfigs;
+    public $ldapNoMapping;
     public $ldapMappings = array(
         "email" => array(),
         "fullname" => array(),
@@ -73,6 +74,7 @@ class SurveyAuthSettings {
             $this->useOtherLDAP = $this->getValue("surveyauth_useotherldap", false);
             $this->useCustom = $this->getValue("surveyauth_usecustom", false);
             $this->otherLDAPConfigs = json_decode($this->getValue("surveyauth_otherldap", "[]"), true);
+            $this->ldapNoMapping = $this->getValue("surveyauth_ldap_nomap", false);
             if (!is_array($this->otherLDAPConfigs)) $this->otherLDAPConfigs = array();
             $defaults = array(
                 "email" => "email,mail",
