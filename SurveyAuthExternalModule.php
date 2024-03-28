@@ -1,5 +1,6 @@
 <?php namespace DE\RUB\SurveyAuthExternalModule;
 
+use Exception;
 use ExternalModules\AbstractExternalModule;
 
 require_once "classes/SurveyAuthSettings.php";
@@ -36,20 +37,29 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     function redcap_every_page_before_render($project_id) {
         $page = defined("PAGE") ? PAGE : "";
+        // This hook handles three things:
+        //  1. Saving dashboard protection settings
+        //  2. Denying access to public dashboards when set to be blocked from the external survey endpoint
+        //  3. Display and evaluate the login dialog on protected dashboards
+
+        // (1) Saving dashboard protection settings
         if ($page == "ProjectDashController:save") {
             $this->save_dash_settings(isset($_GET["dash_id"]) ? $_GET["dash_id"] : "", $_POST);
+            return;
         }
+        
+        // Nothing to do if not a public dashboard page or when public dashboards are disabled
         if ($page != "surveys/index.php" || !isset($_GET["__dashboard"])) return;
-        // Do not act when public dashboards are disabled
         if ($GLOBALS['project_dashboard_allow_public'] == '0' || !$GLOBALS["dash_id"]) return;
 
+        // Gather data and settings
         $dash_id = $GLOBALS["dash_id"];
-        // Get dashboard settings
         $protected = $this->getProjectSetting("survey_auth_protected_$dash_id") == "1";
         $deny_external = $this->getProjectSetting("survey_auth_deny_external_$dash_id") == "1";
         $endpoint = $this->getProjectSetting("survey_auth_endpoint_$dash_id") ?? "both";
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]);
-        // Deny external access?
+
+        // (2) Deny external access
         if ($endpoint_options && $deny_external) {
             $addr = $_SERVER["REQUEST_SCHEME"]."://".$_SERVER["HTTP_HOST"];
             if (starts_with($GLOBALS["redcap_survey_base_url"], $addr)) {
@@ -60,8 +70,18 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 return;
             }
         }
+
+        // (3) Login
+
+        
     }
 
+    /**
+     * Save protection settings for a dashboard
+     * @param string $dash_id The dashboard ID
+     * @param array $post Copy of $_POST
+     * @return void 
+     */
     function save_dash_settings($dash_id, $post) {
         if ($dash_id == "") return;
         if (isset($post["is_public"]) && $post["is_public"] == "on") {
@@ -94,6 +114,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $deny_external = $this->getProjectSetting("survey_auth_deny_external_$dash_id") == "1" ? "checked='checked'" : "";
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]) ? "true" : "false";
         // Inject Javascript
+        // This will render the input elements that allow setting the protection status for public dashboards only
         ?>
         <script>
             $(function() {
