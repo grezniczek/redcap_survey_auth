@@ -34,6 +34,103 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         }
     }
 
+    function redcap_every_page_before_render($project_id) {
+        $page = defined("PAGE") ? PAGE : "";
+        if ($page == "ProjectDashController:save") {
+            $this->save_dash_settings(isset($_GET["dash_id"]) ? $_GET["dash_id"] : "", $_POST);
+        }
+        if ($page != "surveys/index.php" || !isset($_GET["__dashboard"])) return;
+        // Do not act when public dashboards are disabled
+        if ($GLOBALS['project_dashboard_allow_public'] == '0' || !$GLOBALS["dash_id"]) return;
+
+        $dash_id = $GLOBALS["dash_id"];
+        // Get dashboard settings
+        $protected = $this->getProjectSetting("survey_auth_protected_$dash_id") == "1";
+        $deny_external = $this->getProjectSetting("survey_auth_deny_external_$dash_id") == "1";
+        $endpoint = $this->getProjectSetting("survey_auth_endpoint_$dash_id") ?? "both";
+        $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]);
+        // Deny external access?
+        if ($endpoint_options && $deny_external) {
+            $addr = $_SERVER["REQUEST_SCHEME"]."://".$_SERVER["HTTP_HOST"];
+            if (starts_with($GLOBALS["redcap_survey_base_url"], $addr)) {
+                $msg = $this->getProjectSetting("surveyauth_dashboardnoaccessmsg") ?? "Access to this page is not allowed from your location.";
+                header("HTTP/1.0 403 Forbidden");
+                print $msg;
+                $this->exitAfterHook();
+                return;
+            }
+        }
+    }
+
+    function save_dash_settings($dash_id, $post) {
+        if ($dash_id == "") return;
+        if (isset($post["is_public"]) && $post["is_public"] == "on") {
+            // Store settings
+            $this->setProjectSetting("survey_auth_protected_$dash_id", (isset($post["survey_auth_protected"]) && $post["survey_auth_protected"] == "on") ? "1" : "0");
+            $this->setProjectSetting("survey_auth_deny_external_$dash_id", (isset($post["survey_auth_deny_external"]) && $post["survey_auth_deny_external"] == "on") ? "1" : "0");
+            $endpoint_setting = (isset($post["survey_auth_endpoint"]) && in_array($post["survey_auth_endpoint"], ["both", "internal", "external"])) ? $post["survey_auth_endpoint"] : "both";
+            $this->setProjectSetting("survey_auth_endpoint_$dash_id", $endpoint_setting);
+        }
+        else {
+            // Clear all settings
+            $this->setProjectSetting("survey_auth_protected_$dash_id", null);
+            $this->setProjectSetting("survey_auth_endpoint_$dash_id", null);
+            $this->setProjectSetting("survey_auth_deny_external_$dash_id", null);
+        }
+    }
+
+    function redcap_every_page_top($project_id) {
+        $page = defined("PAGE") ? PAGE : "";
+        if ($page != "ProjectDashController:index" || !isset($_GET["addedit"]) || $_GET["addedit"] != "1") return;
+        $dash_id = isset($_GET["dash_id"]) ? $_GET["dash_id"] : "";
+        if ($dash_id == "") return;
+        // Is this a public dashboard?
+        $dashboards = new \ProjectDashboards();
+        $dash = $dashboards->getDashboards($project_id, $dash_id);
+        if ($dash["is_public"] != "1") return;
+        // Get protection status
+        $protect = $this->getProjectSetting("survey_auth_protected_$dash_id") == "1" ? "checked='checked'" : "";
+        $protect_endpoint = $this->getProjectSetting("survey_auth_endpoint_$dash_id") ?? "both";
+        $deny_external = $this->getProjectSetting("survey_auth_deny_external_$dash_id") == "1" ? "checked='checked'" : "";
+        $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]) ? "true" : "false";
+        // Inject Javascript
+        ?>
+        <script>
+            $(function() {
+                const $container = $('#public_link_div').parent();
+                $('<div></div>')
+                .addClass("custom-control custom-switch mt-2")
+                .append("<input class='custom-control-input' name='survey_auth_protected' id='survey_auth_protected' <?=$protect?> type='checkbox'>")
+                .append("<label class='custom-control-label ms-1 mb-0' for='survey_auth_protected'>Dashboard is protected by Survey Auth</label>")
+                .appendTo($container);
+                if(<?= $endpoint_options ?>) {
+                    // Options: Protect internal links, external links, or both; furthermore, option to deny access from external links
+                    $('<div></div>')
+                    .css({
+                        'display': 'flex',
+                        'align-items': 'center',
+                        'font-weight': 'normal'
+                    })
+                    .addClass("ms-4 mt-1 mb-2")
+                    .append("<span class='me-1'>Apply to:</span>")
+                    .append("<input class='form-check-input ms-2' name='survey_auth_endpoint' id='survey_auth_endpoint_both' type='radio' value='both' <?=$protect_endpoint == "both" ? "checked" : ""?>>")
+                    .append("<label class='form-check-label ms-2 mb-0' for='survey_auth_endpoint_both'>Both endpoints</label>")
+                    .append("<input class='form-check-input ms-4' name='survey_auth_endpoint' id='survey_auth_endpoint_external' type='radio' value='external' <?=$protect_endpoint == "internal" ? "checked" : ""?>>")
+                    .append("<label class='form-check-label ms-2 mb-0' for='survey_auth_endpoint_external'>(External) Survey endpoint only</label>")
+                    .append("<input class='form-check-input ms-4' name='survey_auth_endpoint' id='survey_auth_endpoint_internal' type='radio' value='internal' <?=$protect_endpoint == "external" ? "checked" : ""?>>")
+                    .append("<label class='form-check-label ms-2 mb-0' for='survey_auth_endpoint_internal'>(Internal) REDCap endpoint only</label>")
+                    .appendTo($container);
+                    $('<div></div>')
+                    .addClass("custom-control custom-switch mt-1")
+                    .append("<input class='custom-control-input' name='survey_auth_deny_external' id='survey_auth_deny_external' <?=$deny_external?> type='checkbox'>")
+                    .append("<label class='custom-control-label ms-1' for='survey_auth_deny_external'>Deny access via (external) survey endpoint</label>")
+                    .appendTo($container);
+                }
+            });
+        </script>
+        <?php
+    }
+
     /**
      * Hook function that is executed for every survey page in projects where the module is enabled.
      */

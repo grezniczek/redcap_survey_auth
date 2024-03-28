@@ -12,17 +12,15 @@ Possible use cases may be incident reports, internal orders or requests for good
 
 ## Effect
 
-When enabled for a survey, a login page will be displayed as first page of a survey that the user needs to complete before being able to proceed to the survey (similar to the reCAPTCHA feature introduced in REDCap 8.11).
+When enabled for a survey (public or non-public) or public dashboard, a login page will be displayed as first page of a survey that the user needs to complete before being able to proceed to the survey (similar to the reCAPTCHA feature).
 
-From version 1.3.0 of this module, this now works for **non-public surveys** in addition to **public surveys**.
+![Screenshot](images/surveyauth.png)
 
-![Screenshot](surveyauth.png)
-
-Survey users can be authenticated against REDCap Users (table-based authentication), any number or LDAP servers, and/or against a list or username/password entries provided in the module's project configuration.
+Survey/Dashboard users can be authenticated against REDCap Users (table-based authentication), any number or LDAP servers, and/or against a list or username/password entries provided in the module's project configuration.
 
 ## Requirements
 
-REDCap 12.0.7 Standard / REDCap 12.0.8 LTS or newer.
+REDCap 13.1.0 Standard / REDCap 13.1.5 LTS or newer.
 
 ## Installation
 
@@ -100,6 +98,8 @@ REDCap 12.0.7 Standard / REDCap 12.0.8 LTS or newer.
 
 - **Use Allowlist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully.
 
+- **Public Dashboard Access Denied Message:** Allows to set a custom message to be displayed when a access to a custom dashboard is denied.
+
 ### @SURVEY-AUTH Action Tag
 
 To enable authentication for a survey, the **@SURVEY-AUTH** action tag must be used on any field of the survey instrument. There must be at most one action tag per instrument.
@@ -116,10 +116,24 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note that in public surveys, the record does not exist yet, and does any logic should be restricted to record-independent elements, such as e.g. the [arm-number], [arm-label] or the aggregate smart variables.
 
+
+## Public Dashboards
+
+When editing a Project Dashboard that is set to be publicly accessible, additionl protection options are shown when editing an existing dashboard:
+- The option to protect a dashboard with a login screen (_Dashboard is protected by Survey Auth_).  
+
+In REDCap installations that use a separate endpoint for surveys, additional options are available:
+- The option to require login for both endpoints or only for the (external) survey endpoint or the (internal) REDCap endpoint.
+- The option to deny access to public dashboards when accessed via the (external) survey endpoint. The message that is displayed in such a case can be set in the module's project level configuration.
+
+![Protection of Public Dashboards](images/public-dashboard-protection.png)
+
+
 ## [Changelog](#changelog)
 
 Release | Description
 ------- | ---------------------
+v2.0.0  | New feature: Public Dashboards can be protected with a login. For instances with separate survey endpoint, additonal options are available.
 v1.5.0  | LDAP attributes: Support fallback to REDCap's user table for email and full name.
 v1.4.5  | Fix a potential LDAP error when using PHP8.1+
 v1.4.4  | Critical bug fix: Surveys would be marked as completed before actually getting displayed. This was an unintended side effect of the v1.4.3 "fix". The log leak, for now, cannot be prevent, but the module now immediately sanitizes the `redcap_log_view` table by deleting any such log entries (the delete query is limited to the specific project and instrument).
