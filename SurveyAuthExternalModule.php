@@ -56,24 +56,25 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $dash_id = $GLOBALS["dash_id"];
         $protected = $this->getProjectSetting("survey_auth_protected_$dash_id") == "1";
         $deny_external = $this->getProjectSetting("survey_auth_deny_external_$dash_id") == "1";
-        $endpoint = $this->getProjectSetting("survey_auth_endpoint_$dash_id") ?? "both";
+        $apply_to_endpoint = $this->getProjectSetting("survey_auth_endpoint_$dash_id") ?? "both";
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]);
-
+        $endpoint = starts_with($GLOBALS["redcap_survey_base_url"], $_SERVER["REQUEST_SCHEME"]."://".$_SERVER["HTTP_HOST"]) ? "external" : "internal";
         // (2) Deny external access
-        if ($endpoint_options && $deny_external) {
-            $addr = $_SERVER["REQUEST_SCHEME"]."://".$_SERVER["HTTP_HOST"];
-            if (starts_with($GLOBALS["redcap_survey_base_url"], $addr)) {
-                $msg = $this->getProjectSetting("surveyauth_dashboardnoaccessmsg") ?? "Access to this page is not allowed from your location.";
-                header("HTTP/1.0 403 Forbidden");
-                print $msg;
-                $this->exitAfterHook();
-                return;
-            }
+        if ($endpoint_options && $endpoint == "external" && $deny_external) {
+            $msg = $this->getProjectSetting("surveyauth_dashboardnoaccessmsg") ?? "Access to this page is not allowed from your location.";
+            header("HTTP/1.0 403 Forbidden");
+            print $msg;
+            $this->exitAfterHook();
+            return;
         }
 
         // (3) Login
+        if ($protected && ($endpoint == $apply_to_endpoint || $apply_to_endpoint == "both")) {
+            
 
-        
+
+            $todo = "login";
+        }
     }
 
     /**
