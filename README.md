@@ -108,13 +108,13 @@ To enable authentication for a survey, the **@SURVEY-AUTH** action tag must be u
 @SURVEY-AUTH(success=value, username=fieldname, email=fieldname, fullname=fieldname, timestamp=fieldname)
 ```
 
-When _username_, _email_, _fullname_, or _timestamp_ are defined, the respective data will be inserted into to records into the specified fields. Timestamp format will match the datetime format of the target field (time-only fields are not supported; defaults to YMD).
+When _username_, _email_, _fullname_, or _timestamp_ are defined, the corresponding data will be inserted the specified fields (timestamp format will match the datetime format of the target field; time-only fields are not supported; the default date format is YMD).
 
-When a value for _success_ is defined, the field with the action tag will be set to this value. If used, the field should be set to @READONLY/@READONLY-SURVEY or @HIDDEN-SURVEY.
+When a value for _success_ is defined, the field with the action tag will be set to this value. If used, the field should likely be set to @READONLY/@READONLY-SURVEY or @HIDDEN-SURVEY.
 
 ### Combining **@SURVEY-AUTH** with **@IF**
 
-The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note that in public surveys, the record does not exist yet, and does any logic should be restricted to record-independent elements, such as e.g. the [arm-number], [arm-label] or the aggregate smart variables.
+The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note that in public surveys, at the time of evaluation, the record does not exist yet, and thus any logic should be restricted to record-independent elements, such as e.g. the [arm-number], [arm-label] or the aggregate smart variables.
 
 
 ## Public Dashboards

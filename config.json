@@ -236,5 +236,11 @@
             "name": "Message to show when access to a <b>Public Dashboard</b> is denied (default: <i>'Access to this page is not allowed from your location.'</i>)",
             "type": "text"
         }
+    ],
+    "action-tags": [
+        {
+            "tag": "@SURVEY-AUTH",
+            "description": "This action tag enables authentication for a survey when used on any field of a survey instrument (there must be at most one action tag per instrument). This action tag supports optional parameters (use none, any, or all):<p><code>@SURVEY-AUTH(success=value, username=fieldname, email=fieldname, fullname=fieldname, timestamp=fieldname)</code></p><p>When <code>username</code>, <code>email</code>, <code>fullname</code>, or <code>timestamp</code> are used, the corresponding data will be inserted into the specified fields (timestamp format will match the datetime format of the target field; time-only fields are not supported). When a value for <code>success</code> is defined, the field with the action tag will be set to this value (in this case, the field should likely be set to <code>@READONLY</code>/<code>@READONLY-SURVEY</code> or <code>@HIDDEN-SURVEY</code>).</p><p>When combining <code>@SURVEY-AUTH</code> with <code>@IF</code>, note that in public surveys, at the time of evaluation, the record does not exist yet and thus any logic should be restricted to record-independent elements, such as, e.g., the <code>[arm-number]</code>, <code>[arm-label]</code> or the aggregate smart variables.</p>"
+        }
     ]
 }
