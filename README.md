@@ -130,7 +130,7 @@ In REDCap installations that use a separate endpoint for surveys, additional opt
 
 Once authenticated, a cookie will allow access to the dashboard for the remainder of the (calendar) day.
 
-## [Changelog](#changelog)
+## <a id="changelog">Changelog<a>
 
 Release | Description
 ------- | ---------------------
