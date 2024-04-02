@@ -117,13 +117,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             // Success? If not, then authentication needs to be performed.
             if ($response["success"] !== true) {
                 // Inject JavaScript and HTML.
-                $js = file_get_contents(__DIR__ . "/surveyauth.js");
+                $js = file_get_contents(__DIR__ . "/js/surveyauth.js");
                 $blob = $this->toSecureBlob(array(
                     "project_id" => $project_id,
                     "dash_id" => $dash_id,
                     "random" => $this->genKey(16) // Add some random stuff.
                 ));
-                $template = file_get_contents(__DIR__ . "/dash_ui.html");
+                $template = file_get_contents(__DIR__ . "/html/dash_ui.html");
                 $replace = array(
                     "{JS}" => $js,
                     "{INSTRUCTIONS}" => $this->settings->text,
@@ -310,7 +310,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         if ($response["success"] !== true) {
 
             // Inject JavaScript and HTML.
-            $js = file_get_contents(__DIR__ . "/surveyauth.js");
+            $js = file_get_contents(__DIR__ . "/js/surveyauth.js");
             $orig_query_params = explode("?", $_SERVER["REQUEST_URI"], 2)[1] ?? "";
             $orig_query_params = strlen($orig_query_params) ? "?$orig_query_params" : "";
             $queryUrl = APP_PATH_SURVEY_FULL . $orig_query_params;
@@ -359,7 +359,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 }
             }
             $mobile = $isMobile ? "_mobile" : "";
-            $template = file_get_contents(__DIR__ . "/ui{$mobile}.html");
+            $template = file_get_contents(__DIR__ . "/html/ui{$mobile}.html");
             $replace = array(
                 "{JS}" => $js,
                 "{LOGO}" => $logo,
@@ -384,7 +384,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             // Success == true means that authentication has succeded.
             // When a forward url is define, then forward
             if (isset($response["targetUrl"])) {
-                $template = file_get_contents(__DIR__ . "/forward.html");
+                $template = file_get_contents(__DIR__ . "/html/forward.html");
                 $replace = array(
                     "{LOGO}" => $logo,
                     "{PREFIX}" => $this->PREFIX,
