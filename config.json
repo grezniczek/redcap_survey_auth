@@ -232,12 +232,9 @@
             "required": true
         },
         {
-            "key": "surveyauth_dashboardnoaccessmsg",
+            "key": "surveyauth_dash_noaccessmsg",
             "name": "Message to show when access to a <b>Public Dashboard</b> is denied (default: <i>'Access to this page is not allowed from your location.'</i>)",
             "type": "text"
         }
-    ],
-    "no-auth-pages": [
-        "authenticate"
     ]
 }

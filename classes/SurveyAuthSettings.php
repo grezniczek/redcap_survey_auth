@@ -36,12 +36,16 @@ class SurveyAuthSettings {
     public $useWhitelist;
     public $whitelist;
     public $lockoutStatus;
+    public $dash_protected;
+    public $dash_endpoint;
+    public $dash_noaccessmsg;
+    public $dash_denyexternal;
 
     private $m;
 
-    function __construct($module) 
+    function __construct($module, $project_id = null, $dash_id = 0) 
     {
-        $this->isProject = isset($GLOBALS["project_id"]);
+        $this->isProject = $project_id != null;
         $this->m = $module;
         $this->blobSecret = $module->getSystemSetting("surveyauth_blobsecret");
         $this->blobHmac = $module->getSystemSetting("surveyauth_blobhmac");
@@ -91,6 +95,12 @@ class SurveyAuthSettings {
             $this->customCredentials = $this->parseCustomCredentials($this->getValue("surveyauth_custom", ""));
             $this->useWhitelist = $this->getValue("surveyauth_usewhitelist", false);
             $this->whitelist = $this->parseWhitelist($this->getValue("surveyauth_whitelist", ""));
+            $this->dash_noaccessmsg = $this->getValue("surveyauth_dash_noaccessmsg", "Access to this page is not allowed from your location.");
+            if ($dash_id > 0) {
+                $this->dash_protected = $this->getValue("surveyauth_dash_protected_$dash_id", false) == "1";
+                $this->dash_endpoint = $this->getValue("surveyauth_dash_endpoint_$dash_id", "both");
+                $this->dash_denyexternal = $this->getValue("surveyauth_dash_denyexternal_$dash_id", false) == "1";
+            }
         }
     }
 
