@@ -1,14 +1,14 @@
 # REDCap Survey Auth
 
-A REDCap External Module that adds authentication to surveys.
+A REDCap External Module that adds authentication to surveys and public dashboards.
 
 See the [changelog](#changelog) for information on release updates.
 
 ## Purpose / Use Case
 
-In some cases it may be useful to present users with a data entry form but not confront them with the REDCap user interface, yet still be able to tell who the person entering the data was. This way, they do not need to be members of the project or even have a REDCap account.
+In some cases it may be useful to present users with a data entry form or data (dashboards), but not confront them with the REDCap user interface, yet still be able to tell who the person entering or viewing the data was. This way, they do not need to be members of the project or even have a REDCap account.
 
-Possible use cases may be incident reports, internal orders or requests for goods or services, etc.
+Possible use cases may be incident reports, internal orders/reports or requests for goods or services, etc.
 
 ## Effect
 
@@ -128,6 +128,7 @@ In REDCap installations that use a separate endpoint for surveys, additional opt
 
 ![Protection of Public Dashboards](images/public-dashboard-protection.png)
 
+Once authenticated, a cookie will allow access to the dashboard for the remainder of the (calendar) day.
 
 ## [Changelog](#changelog)
 

@@ -54,26 +54,101 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
         // Gather data and settings
         $dash_id = $GLOBALS["dash_id"];
-        $protected = $this->getProjectSetting("survey_auth_protected_$dash_id") == "1";
-        $deny_external = $this->getProjectSetting("survey_auth_deny_external_$dash_id") == "1";
-        $apply_to_endpoint = $this->getProjectSetting("survey_auth_endpoint_$dash_id") ?? "both";
+        $this->settings = new SurveyAuthSettings($this, $project_id, $dash_id);
+        $apply_to_endpoint = $this->settings->dash_endpoint;
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]);
         $endpoint = starts_with($GLOBALS["redcap_survey_base_url"], $_SERVER["REQUEST_SCHEME"]."://".$_SERVER["HTTP_HOST"]) ? "external" : "internal";
         // (2) Deny external access
-        if ($endpoint_options && $endpoint == "external" && $deny_external) {
-            $msg = $this->getProjectSetting("surveyauth_dashboardnoaccessmsg") ?? "Access to this page is not allowed from your location.";
+        if ($endpoint_options && $endpoint == "external" && $this->settings->dash_denyexternal) {
             header("HTTP/1.0 403 Forbidden");
-            print $msg;
+            print $this->settings->dash_noaccessmsg;
             $this->exitAfterHook();
             return;
         }
 
         // (3) Login
-        if ($protected && ($endpoint == $apply_to_endpoint || $apply_to_endpoint == "both")) {
-            
-
-
-            $todo = "login";
+        if ($this->settings->dash_protected && ($endpoint == $apply_to_endpoint || $apply_to_endpoint == "both")) {
+            // Default response (unless changed)
+            $response = array ( 
+                "success" => false,
+                "error" => null
+            );
+            // Already authenticated?
+            $session_key = "SurveyAuth-".date("Y-m-d")."-".$dash_id;
+            if ($_SESSION[$session_key] === true) {
+                $response["success"] = true;
+            }
+            // Get some dashboard info
+            $dashboards = new \ProjectDashboards();
+            $dash = $dashboards->getDashboards($project_id, $dash_id);
+            // Get values from POST.
+            if (isset($_POST["{$this->PREFIX}-username"]) && 
+                isset($_POST["{$this->PREFIX}-password"]) &&
+                isset($_POST["{$this->PREFIX}-blob"])) {
+                // Band-aid fix: Remove log entry with clear text password from redcap_log_view table
+                // $delete_log = $this->query(
+                //     "DELETE FROM `redcap_log_view` WHERE `project_id` = ? AND `event` = 'PAGE_VIEW' AND `form_name` = ? AND `miscellaneous` LIKE '// POST%[redcap_survey_auth-password]%'",
+                //     [
+                //         $project_id,
+                //         $instrument
+                //     ]
+                // );
+                // Extract data from POST.
+                $username = $_POST["{$this->PREFIX}-username"];
+                $password = $_POST["{$this->PREFIX}-password"];
+                $encrypted_blob = $_POST["{$this->PREFIX}-blob"];
+                // Validate blob.
+                $blob = $this->fromSecureBlob($encrypted_blob);
+                if ($blob == null || $blob["project_id"] != $project_id || $blob["dash_id"] != $dash_id) {
+                    $response = array (
+                        "success" => false,
+                        "error" => $this->settings->failMsg
+                    );
+                    $_SESSION[$session_key] = null;
+                }
+                else {
+                    // Blob was valid, try to authenticate.
+                    $response = $this->authenticateDashboard($username, $password, $project_id, $dash_id);
+                    if ($response["success"] === true) {
+                        $_SESSION[$session_key] = true;
+                    }
+                }
+            }
+            // Success? If not, then authentication needs to be performed.
+            if ($response["success"] !== true) {
+                // Inject JavaScript and HTML.
+                $js = file_get_contents(__DIR__ . "/surveyauth.js");
+                $blob = $this->toSecureBlob(array(
+                    "project_id" => $project_id,
+                    "dash_id" => $dash_id,
+                    "random" => $this->genKey(16) // Add some random stuff.
+                ));
+                $template = file_get_contents(__DIR__ . "/dash_ui.html");
+                $replace = array(
+                    "{JS}" => $js,
+                    "{INSTRUCTIONS}" => $this->settings->text,
+                    "{PREFIX}" => $this->PREFIX,
+                    "{DASHBOARDTITLE}" => decode_filter_tags($dash["title"]),
+                    "{USERNAMELABEL}" => $this->settings->usernameLabel,
+                    "{PASSWORDLABEL}" => $this->settings->passwordLabel,
+                    "{SUBMITLABEL}" => $this->settings->submitLabel,
+                    "{FAILMSG}" => $response["error"],
+                    "{ERROR}" => strlen($response["error"]) ? "block" : "none",
+                    "{BLOB}" => $blob,
+                );
+                $objHtmlPage = new \HtmlPage();
+                $objHtmlPage->addStylesheet("dashboard_public.css", 'screen,print');
+                $objHtmlPage->setPageTitle(strip_tags($dash["title"]));
+                $objHtmlPage->PrintHeader();
+                print str_replace(array_keys($replace), array_values($replace), $template);
+                $objHtmlPage->PrintFooter();
+                // No further processing (i.e. do not let REDCap render the dashboard page).
+                $this->exitAfterHook();
+            }
+            else {
+                // Success == true means that authentication has succeded.
+                // There is nothing to do. We let the user continue to the dashboard.
+            }
         }
     }
 
@@ -87,16 +162,16 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         if ($dash_id == "") return;
         if (isset($post["is_public"]) && $post["is_public"] == "on") {
             // Store settings
-            $this->setProjectSetting("survey_auth_protected_$dash_id", (isset($post["survey_auth_protected"]) && $post["survey_auth_protected"] == "on") ? "1" : "0");
-            $this->setProjectSetting("survey_auth_deny_external_$dash_id", (isset($post["survey_auth_deny_external"]) && $post["survey_auth_deny_external"] == "on") ? "1" : "0");
-            $endpoint_setting = (isset($post["survey_auth_endpoint"]) && in_array($post["survey_auth_endpoint"], ["both", "internal", "external"])) ? $post["survey_auth_endpoint"] : "both";
-            $this->setProjectSetting("survey_auth_endpoint_$dash_id", $endpoint_setting);
+            $this->setProjectSetting("surveyauth_dash_protected_$dash_id", (isset($post["survey_auth_protected"]) && $post["survey_auth_protected"] == "on") ? "1" : "0");
+            $this->setProjectSetting("surveyauth_dash_denyexternal_$dash_id", (isset($post["surveyauth_dash_denyexternal"]) && $post["surveyauth_dash_denyexternal"] == "on") ? "1" : "0");
+            $endpoint_setting = (isset($post["surveyauth_dash_endpoint"]) && in_array($post["surveyauth_dash_endpoint"], ["both", "internal", "external"])) ? $post["surveyauth_dash_endpoint"] : "both";
+            $this->setProjectSetting("surveyauth_dash_endpoint_$dash_id", $endpoint_setting);
         }
         else {
             // Clear all settings
-            $this->setProjectSetting("survey_auth_protected_$dash_id", null);
-            $this->setProjectSetting("survey_auth_endpoint_$dash_id", null);
-            $this->setProjectSetting("survey_auth_deny_external_$dash_id", null);
+            $this->setProjectSetting("surveyauth_dash_protected_$dash_id", null);
+            $this->setProjectSetting("surveyauth_dash_endpoint_$dash_id", null);
+            $this->setProjectSetting("surveyauth_dash_denyexternal_$dash_id", null);
         }
     }
 
@@ -110,9 +185,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $dash = $dashboards->getDashboards($project_id, $dash_id);
         if ($dash["is_public"] != "1") return;
         // Get protection status
-        $protect = $this->getProjectSetting("survey_auth_protected_$dash_id") == "1" ? "checked='checked'" : "";
-        $protect_endpoint = $this->getProjectSetting("survey_auth_endpoint_$dash_id") ?? "both";
-        $deny_external = $this->getProjectSetting("survey_auth_deny_external_$dash_id") == "1" ? "checked='checked'" : "";
+        $this->settings = new SurveyAuthSettings($this, $project_id, $dash_id);
+        $protect = $this->settings->dash_protected ? "checked='checked'" : "";
+        $deny_external = $this->settings->dash_denyexternal ? "checked='checked'" : "";
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]) ? "true" : "false";
         // Inject Javascript
         // This will render the input elements that allow setting the protection status for public dashboards only
@@ -135,17 +210,17 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     })
                     .addClass("ms-4 mt-1 mb-2")
                     .append("<span class='me-1'>Apply to:</span>")
-                    .append("<input class='form-check-input ms-2' name='survey_auth_endpoint' id='survey_auth_endpoint_both' type='radio' value='both' <?=$protect_endpoint == "both" ? "checked" : ""?>>")
-                    .append("<label class='form-check-label ms-2 mb-0' for='survey_auth_endpoint_both'>Both endpoints</label>")
-                    .append("<input class='form-check-input ms-4' name='survey_auth_endpoint' id='survey_auth_endpoint_external' type='radio' value='external' <?=$protect_endpoint == "internal" ? "checked" : ""?>>")
-                    .append("<label class='form-check-label ms-2 mb-0' for='survey_auth_endpoint_external'>(External) Survey endpoint only</label>")
-                    .append("<input class='form-check-input ms-4' name='survey_auth_endpoint' id='survey_auth_endpoint_internal' type='radio' value='internal' <?=$protect_endpoint == "external" ? "checked" : ""?>>")
-                    .append("<label class='form-check-label ms-2 mb-0' for='survey_auth_endpoint_internal'>(Internal) REDCap endpoint only</label>")
+                    .append("<input class='form-check-input ms-2' name='surveyauth_dash_endpoint' id='surveyauth_dash_endpoint_both' type='radio' value='both' <?=$this->settings->dash_endpoint == "both" ? "checked" : ""?>>")
+                    .append("<label class='form-check-label ms-2 mb-0' for='surveyauth_dash_endpoint_both'>Both endpoints</label>")
+                    .append("<input class='form-check-input ms-4' name='surveyauth_dash_endpoint' id='surveyauth_dash_endpoint_external' type='radio' value='external' <?=$this->settings->dash_endpoint == "internal" ? "checked" : ""?>>")
+                    .append("<label class='form-check-label ms-2 mb-0' for='surveyauth_dash_endpoint_external'>(External) Survey endpoint only</label>")
+                    .append("<input class='form-check-input ms-4' name='surveyauth_dash_endpoint' id='surveyauth_dash_endpoint_internal' type='radio' value='internal' <?=$this->settings->dash_endpoint == "external" ? "checked" : ""?>>")
+                    .append("<label class='form-check-label ms-2 mb-0' for='surveyauth_dash_endpoint_internal'>(Internal) REDCap endpoint only</label>")
                     .appendTo($container);
                     $('<div></div>')
                     .addClass("custom-control custom-switch mt-1")
-                    .append("<input class='custom-control-input' name='survey_auth_deny_external' id='survey_auth_deny_external' <?=$deny_external?> type='checkbox'>")
-                    .append("<label class='custom-control-label ms-1' for='survey_auth_deny_external'>Deny access via (external) survey endpoint</label>")
+                    .append("<input class='custom-control-input' name='surveyauth_dash_denyexternal' id='surveyauth_dash_denyexternal' <?=$deny_external?> type='checkbox'>")
+                    .append("<label class='custom-control-label ms-1' for='surveyauth_dash_denyexternal'>Deny access via (external) survey endpoint</label>")
                     .appendTo($container);
                 }
             });
@@ -167,7 +242,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
         }
 
-        $this->settings = new SurveyAuthSettings($this);
+        $this->settings = new SurveyAuthSettings($this, $project_id);
 
         // Check if auth has already happened, in which case we stop any further processing
         if (isset($_GET["__at"])) {
@@ -348,6 +423,72 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         return strtr($input, '._-', '+/=');
     }
 
+    function authenticateDashboard($username, $password, $project_id, $dash_id) {
+        $result = array (
+            "success" => false,
+            "error" => null,
+            "log_error" => [],
+        );
+        $ip = $_SERVER["REMOTE_ADDR"];
+        if (strlen($_SERVER["HTTP_X_FORWARDED_FOR"])) $ip .= $_SERVER["HTTP_X_FORWARDED_FOR"];
+        try {
+            do {
+                // Check lockout status.
+                $lockoutCount = $this->checkLockoutStatus($ip);
+                if ($this->settings->lockoutCount && $lockoutCount > $this->settings->lockoutCount - 1) {
+                    $result["error"] = $this->settings->lockoutMsg;
+                    $result["lockout"] = $this->settings->lockouttime * 60 * 1000;
+                    break;
+                }
+                // Check credentials.
+                // First, let's see if the whitelist is active.
+                if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist)) {
+                    break;
+                }
+                // Check custom credentials if enabled.
+                if (!$result["success"] && $this->settings->useCustom) {
+                    $this->authenticateCustom($username, $password, $result);
+                }
+                // Check REDCap table-based users.
+                if (!$result["success"] && $this->settings->useTable) {
+                    $this->authenticateTable($username, $password, $result);
+                }
+                // Check LDAP.
+                if (!$result["success"] && $this->settings->useLDAP) {
+                    $this->authenticateLDAP($username, $password, $result);
+                }
+                // Check other LDAP.
+                if (!$result["success"] && $this->settings->useOtherLDAP) {
+                    $this->authenticateOtherLDAP($username, $password, $result);
+                }
+                if (!$result["success"]) {
+                    $result["error"] = count($result["log_error"]) ? $this->settings->errorMsg : $this->settings->failMsg;
+                    // Update lockout status.
+                    $this->updateLockoutStatus($ip);
+                    break;
+                }
+                // Login was successful.
+                if ($lockoutCount > 0) {
+                    $this->clearLockoutStatus($ip);
+                }
+            } while (false);
+        }
+        catch (\Exception $e) {
+            $result["success"] = false;
+            $result["error"] = $this->settings->errorMsg;
+            $result["log_error"][] = $e->getMessage();
+        }
+        // Write a log entry.
+        if ($this->settings->log == "all" || ($this->settings->log == "fail" && !$result["success"]) || ($this->settings->log == "success" && $result["success"])) {
+            $changes = "Public Dashboard $dash_id: " . ($result["success"] ? "Successful authentication via {$result["method"]}" : "Failed or denied login attempt (IP: {$ip})");
+            if (count($result["log_error"])) {
+                $changes .= "\n" . join("\n", $result["log_error"]);
+            }
+            \Logging::logEvent("", "", "OTHER", null, $changes, "Survey Auth EM", "", "( ".$username." )", $project_id);
+        }
+        // Return result.
+        return $result;
+    }
 
     /**
      * Determines, whether the credentials are valid.
