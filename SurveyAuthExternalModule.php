@@ -182,7 +182,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     private function add_report_settings($project_id) {
-        $report_id = isset($_GET["report_id"]) ? $_GET["report_id"] : "";
+        $report_id = isset($_GET["report_id"]) ? $this->escape($_GET["report_id"]) : "";
         // Some checks
         if ($report_id == "" || !\DataExport::validateReportId($project_id, $report_id)) return;
         if (!$this->can_edit_report($project_id, $report_id)) return;
