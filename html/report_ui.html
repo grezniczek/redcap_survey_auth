@@ -1,0 +1,58 @@
+<style>
+    .{PREFIX}-failmsg {
+        margin-top: 10px;
+        color: red;
+    }
+</style>
+<div id="report_div" style="margin:0 0 20px;">
+    <div>
+        <div class="report-results-returned" style="padding-bottom:5px;">
+            <div class="text-secondary fs12">&nbsp;</div>
+        </div>
+    </div>
+    <div id="this_report_title" style="margin:10px 0 8px;padding:5px 3px;color:#800000;font-size:18px;font-weight:bold;">{REPORTTITLE}</div>
+    <div style="padding-left:3px;">
+        <p class="mb-3">{INSTRUCTIONS}</p>
+        <form id="{PREFIX}-form" name="{PREFIX}-form" enctype="multipart/form-data" target="_self" method="POST">
+            <table role="presentation" class="form_border container-fluid" style="display:table; width: fit-content;" id="questiontable">
+                <tbody class="formtbody">
+                    <tr>
+                        <td class="labelrc col-6">
+                            <label class="fl" for="{PREFIX}-username" id="{PREFIX}-label-username" aria-hidden="true">{USERNAMELABEL}</label>
+                        </td>
+                        <td class="data col-5">
+                            <input autocomplete="username" autofocus aria-labelledby="{PREFIX}-label-username" class="x-form-text x-form-field" type="text" name="{PREFIX}-username" id="{PREFIX}-username" value="" />
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="labelrc col-6">
+                            <label class="fl" id="{PREFIX}-label-password" for="{PREFIX}-password" aria-hidden="true">{PASSWORDLABEL}</label>
+                        </td>
+                        <td class="data col-5">
+                            <input autocomplete="new-password" aria-labelledby="{PREFIX}-label-password" class="x-form-text x-form-field" type="password" name="{PREFIX}-password" id="{PREFIX}-password" value="" />
+                        </td>
+                    </tr>
+                    <tr class="surveysubmit">
+                        <td class="labelrc col-12" style="padding:5px;" colspan="2">
+                            <table cellspacing="0">
+                                <tbody>
+                                    <tr>
+                                        <td colspan="2" style="text-align:center;padding:15px 0;">
+                                            <button id="{PREFIX}-submit" tabindex="0" class="jqbutton nowrap ui-button ui-corner-all ui-widget ui-button-disabled ui-state-disabled" style="color:#800000;width:100%;max-width:140px;" onclick="RUBSurveyAuth.submit('{PREFIX}'); return false;">
+                                                {SUBMITLABEL}
+                                            </button>
+                                            <input type="hidden" name="{PREFIX}-blob" value="{BLOB}" />
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </form>
+        <div id="{PREFIX}-failmsg" class="{PREFIX}-failmsg" style="display: {ERROR}">
+            {FAILMSG}
+        </div>
+    </div>
+</div>
