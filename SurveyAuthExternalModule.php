@@ -1,6 +1,5 @@
 <?php namespace DE\RUB\SurveyAuthExternalModule;
 
-use Exception;
 use ExternalModules\AbstractExternalModule;
 
 require_once "classes/SurveyAuthSettings.php";
@@ -105,23 +104,18 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $this->exitAfterHook();
             return;
         }
-
-        return;
         // Login
-        if ($this->settings->dash_protected && ($endpoint == $apply_to_endpoint || $apply_to_endpoint == "both")) {
+        if ($this->settings->report_protected && ($endpoint == $apply_to_endpoint || $apply_to_endpoint == "both")) {
             // Default response (unless changed)
             $response = array ( 
                 "success" => false,
                 "error" => null
             );
             // Already authenticated?
-            $session_key = "SurveyAuth-".date("Y-m-d")."-".$dash_id;
+            $session_key = "SurveyAuth-".date("Y-m-d")."-Report-".$report_id;
             if ($_SESSION[$session_key] === true) {
                 $response["success"] = true;
             }
-            // Get some dashboard info
-            $dashboards = new \ProjectDashboards();
-            $dash = $dashboards->getDashboards($project_id, $dash_id);
             // Get values from POST.
             if (isset($_POST["{$this->PREFIX}-username"]) && 
                 isset($_POST["{$this->PREFIX}-password"]) &&
@@ -132,7 +126,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 $encrypted_blob = $_POST["{$this->PREFIX}-blob"];
                 // Validate blob.
                 $blob = $this->fromSecureBlob($encrypted_blob);
-                if ($blob == null || $blob["project_id"] != $project_id || $blob["dash_id"] != $dash_id) {
+                if ($blob == null || $blob["project_id"] != $project_id || $blob["report_id"] != $report_id) {
                     $response = array (
                         "success" => false,
                         "error" => $this->settings->failMsg
@@ -149,19 +143,20 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
             // Success? If not, then authentication needs to be performed.
             if ($response["success"] !== true) {
+                $report = \DataExport::getReports($report_id, [], [], $project_id);
                 // Inject JavaScript and HTML.
                 $js = file_get_contents(__DIR__ . "/js/surveyauth.js");
                 $blob = $this->toSecureBlob(array(
                     "project_id" => $project_id,
-                    "dash_id" => $dash_id,
+                    "report_id" => $report_id,
                     "random" => $this->genKey(16) // Add some random stuff.
                 ));
-                $template = file_get_contents(__DIR__ . "/html/dash_ui.html");
+                $template = file_get_contents(__DIR__ . "/html/report_ui.html");
                 $replace = array(
                     "{JS}" => $js,
                     "{INSTRUCTIONS}" => $this->settings->text,
                     "{PREFIX}" => $this->PREFIX,
-                    "{DASHBOARDTITLE}" => decode_filter_tags($dash["title"]),
+                    "{REPORTTITLE}" => decode_filter_tags($report["title"]),
                     "{USERNAMELABEL}" => $this->settings->usernameLabel,
                     "{PASSWORDLABEL}" => $this->settings->passwordLabel,
                     "{SUBMITLABEL}" => $this->settings->submitLabel,
@@ -169,11 +164,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     "{ERROR}" => strlen($response["error"]) ? "block" : "none",
                     "{BLOB}" => $blob,
                 );
+                $login_dialog = str_replace(array_keys($replace), array_values($replace), $template);
                 $objHtmlPage = new \HtmlPage();
-                $objHtmlPage->addStylesheet("dashboard_public.css", 'screen,print');
-                $objHtmlPage->setPageTitle(strip_tags($dash["title"]));
+                $objHtmlPage->addStylesheet("report_public.css", 'screen,print');
+                $objHtmlPage->setPageTitle(strip_tags($report["title"]));
                 $objHtmlPage->PrintHeader();
-                print str_replace(array_keys($replace), array_values($replace), $template);
+                print $login_dialog;
                 $objHtmlPage->PrintFooter();
                 // No further processing (i.e. do not let REDCap render the dashboard page).
                 $this->exitAfterHook();
@@ -317,7 +313,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "error" => null
             );
             // Already authenticated?
-            $session_key = "SurveyAuth-".date("Y-m-d")."-".$dash_id;
+            $session_key = "SurveyAuth-".date("Y-m-d")."-Dashboard-".$dash_id;
             if ($_SESSION[$session_key] === true) {
                 $response["success"] = true;
             }
