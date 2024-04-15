@@ -57,8 +57,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         if (!in_array($page_type, ["dashboard", "report"])) return;
 
         if ($page_type == "dashboard") {
-            // Public Dashboards globally disabled?
-            if ($GLOBALS['project_dashboard_allow_public'] == '0' || !$GLOBALS["dash_id"]) return;
             $this->protect_dashboard($project_id);
             return;
         }
@@ -641,7 +639,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     private function get_endpoint() {
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]);
-        $endpoint = starts_with($GLOBALS["redcap_survey_base_url"], $_SERVER["REQUEST_SCHEME"]."://".$_SERVER["HTTP_HOST"]) ? "external" : "internal";
+        $endpoint = starts_with($GLOBALS["redcap_base_url"], $_SERVER["REQUEST_SCHEME"]."://".$_SERVER["HTTP_HOST"]) ? "internal" : "external";
         return [$endpoint_options, $endpoint];
     }
 
