@@ -4,7 +4,7 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
-v2.1.1  | Bug fix: The survey endpoint detection failed in some circumstances.
+v2.1.1  | Bug fix: Dashboard protection and survey endpoint detection failed in some circumstances.
 v2.1.0  | New feature: Public Reports can be protected with a login. For instances with separate survey endpoint, additonal options are available.
 v2.0.0  | New feature: Public Dashboards can be protected with a login. For instances with separate survey endpoint, additonal options are available.
 v1.5.0  | LDAP attributes: Support fallback to REDCap's user table for email and full name.
