@@ -53,7 +53,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
         // Core file endpoints also accept survey hashes without the survey passthrough.
         if (isset($_GET['s']) && in_array($page, ['DataEntry/file_upload.php', 'DataEntry/file_download.php',
-            'DataEntry/file_delete.php', 'DataEntry/image_view.php'], true)) {
+            'DataEntry/file_delete.php', 'DataEntry/image_view.php', 'Design/file_attachment_upload.php'], true)) {
             $this->protectSurveyBeforeProcessing($project_id);
             return;
         }
