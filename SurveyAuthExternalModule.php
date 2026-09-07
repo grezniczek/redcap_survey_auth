@@ -401,9 +401,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     break;
                 }
                 // Login was successful.
-                if ($lockoutCount > 0) {
-                    $this->clearLockoutStatus($ip);
-                }
+                $this->clearLockoutStatus($ip);
             } while (false);
         }
         catch (\Exception $e) {
@@ -476,9 +474,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     break;
                 }
                 // Login was successful.
-                if ($lockoutCount > 0) {
-                    $this->clearLockoutStatus($ip);
-                }
+                $this->clearLockoutStatus($ip);
                 $result = $this->completeSurveyAuthentication($result, $project_id, $instrument, $event_id, $repeat_instance, $record, $writeAuthenticationData);
                 $record = $result['record'] ?? $record;
             } while (false);
@@ -958,31 +954,23 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      * Helper function which checks whether failed login attempts have been recorded for an IP address.
      */
     private function checkLockoutStatus($ip) {
-        if (isset($this->settings->lockoutStatus[$ip])) {
-            $ls = $this->settings->lockoutStatus[$ip];
-            if ($ls["n"] > 2) {
-                $ts = $ls["ts"];
-                if (((new \DateTime)->getTimestamp() - $ts) > ($this->settings->lockouttime * 60)) {
-                    return 2;
-                }
-                $this->updateLockoutStatus($ip);
-            }
-            return $ls["n"];
-        } 
-        return 0;
+        if ($this->settings->lockouttime <= 0 || !$this->settings->lockoutCount) return 0;
+        $status = $this->settings->lockoutStatus[$ip] ?? null;
+        if (!$status || time() >= $status["ts"] + $this->settings->lockouttime * 60) return 0;
+        // Checking a blocked request must not increment failures or extend expiry.
+        return (int)$status["n"];
     }
 
     /**
-     * Helper function which updates the lockout status for an IP address.
+     * Record one failed authentication attempt, starting over after expiry.
      */
     private function updateLockoutStatus($ip) {
-        if ($this->settings->lockouttime != 0) {
-            $ls = isset($this->settings->lockoutStatus[$ip]) ? $this->settings->lockoutStatus[$ip] : array("n" => 0);
-            $ls["n"]++;
-            $ls["ts"] = (new \DateTime())->getTimestamp();
-            $this->settings->lockoutStatus[$ip] = $ls;
-            $this->setSystemSetting("surveyauth_lockouts", json_encode($this->settings->lockoutStatus));
-        }
+        if ($this->settings->lockouttime <= 0 || !$this->settings->lockoutCount) return;
+        $this->settings->lockoutStatus[$ip] = [
+            "n" => $this->checkLockoutStatus($ip) + 1,
+            "ts" => time()
+        ];
+        $this->setSystemSetting("surveyauth_lockouts", json_encode($this->settings->lockoutStatus));
     }
 
     /**
