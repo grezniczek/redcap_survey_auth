@@ -51,6 +51,14 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
         // Nothing to do if not a public dashboard or report page
         if ($page != "surveys/index.php") return;
+        // Ambiguous selectors must never select a different protection policy
+        // from the resource REDCap will render.
+        if (isset($_GET["__dashboard"], $_GET["__report"])) {
+            http_response_code(400);
+            print "Conflicting resource selectors.";
+            $this->exitAfterHook();
+            return;
+        }
         $page_type = "";
         if (isset($_GET["__dashboard"])) $page_type = "dashboard";
         if (isset($_GET["__report"])) $page_type = "report";
@@ -650,7 +658,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $fields = array();
         foreach ($dataDictionary as $fieldInfo) {
             $evaluatedFieldAnnotation = \Form::replaceIfActionTag($fieldInfo->field_annotation, $project_id, $record ?? "1", $event_id, $instrument, $repeat_instance);
-            if (strpos($evaluatedFieldAnnotation, "@".SurveyAuthExternalModule::$ACTIONTAG)) {
+            // Match the complete tag, including at offset zero and with parameters.
+            // Form::hasActionTag() splits on spaces and misses parameterized tags.
+            if (preg_match('/(?<![A-Za-z0-9_@-])@'.preg_quote(self::$ACTIONTAG, '/').'(?![A-Za-z0-9_-])/', $evaluatedFieldAnnotation)) {
                 array_push($fields, new SurveyAuthInfo($fieldInfo->field_name, $evaluatedFieldAnnotation, $dataDictionary));
             }
         }
