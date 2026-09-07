@@ -378,22 +378,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist, true)) {
                     break;
                 }
-                // Check custom credentials if enabled.
-                if (!$result["success"] && $this->settings->useCustom) {
-                    $this->authenticateCustom($username, $password, $result);
-                }
-                // Check REDCap table-based users.
-                if (!$result["success"] && $this->settings->useTable) {
-                    $this->authenticateTable($username, $password, $result);
-                }
-                // Check LDAP.
-                if (!$result["success"] && $this->settings->useLDAP) {
-                    $this->authenticateLDAP($username, $password, $result);
-                }
-                // Check other LDAP.
-                if (!$result["success"] && $this->settings->useOtherLDAP) {
-                    $this->authenticateOtherLDAP($username, $password, $result);
-                }
+                $this->authenticateBackends($username, $password, $result);
                 if (!$result["success"]) {
                     $result["error"] = count($result["log_error"]) ? $this->settings->errorMsg : $this->settings->failMsg;
                     // Update lockout status.
@@ -451,22 +436,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist, true)) {
                     break;
                 }
-                // Check custom credentials if enabled.
-                if (!$result["success"] && $this->settings->useCustom) {
-                    $this->authenticateCustom($username, $password, $result);
-                }
-                // Check REDCap table-based users.
-                if (!$result["success"] && $this->settings->useTable) {
-                    $this->authenticateTable($username, $password, $result);
-                }
-                // Check LDAP.
-                if (!$result["success"] && $this->settings->useLDAP) {
-                    $this->authenticateLDAP($username, $password, $result);
-                }
-                // Check other LDAP.
-                if (!$result["success"] && $this->settings->useOtherLDAP) {
-                    $this->authenticateOtherLDAP($username, $password, $result);
-                }
+                $this->authenticateBackends($username, $password, $result);
                 if (!$result["success"]) {
                     $result["error"] = count($result["log_error"]) ? $this->settings->errorMsg : $this->settings->failMsg;
                     // Update lockout status.
@@ -625,6 +595,21 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         return $result;
     }
 
+    private function authenticateBackends($username, $password, array &$result): void {
+        // Match the order presented in module settings and documentation.
+        foreach (['Custom', 'Table', 'OtherLDAP', 'LDAP'] as $backend) {
+            if (!$this->settings->{'use'.$backend}) continue;
+            $attempt = ['success'=>false, 'username'=>$username, 'email'=>null, 'fullname'=>null, 'log_error'=>[]];
+            $this->{'authenticate'.$backend}($username, $password, $attempt);
+            $result['log_error'] = array_merge($result['log_error'], $attempt['log_error']);
+            if ($attempt['success']) {
+                unset($attempt['log_error']);
+                $result = array_replace($result, $attempt);
+                return;
+            }
+        }
+    }
+
     private function authenticateTable($username, $password, &$result) {
         try {
             $account = \User::getUserInfo($username);
@@ -660,9 +645,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         if (array_key_exists("url", $configs)) $configs = array ($configs);
 
         foreach ($configs as $config) {
-            $this->doLDAPauth($username, $password, $config, $result);
-            if ($result["success"]) {
-                $result["method"] = "LDAP";
+            $attempt = ['success'=>false, 'username'=>$username, 'email'=>null, 'fullname'=>null, 'log_error'=>[]];
+            $this->doLDAPauth($username, $password, $config, $attempt);
+            $result['log_error'] = array_merge($result['log_error'], $attempt['log_error']);
+            if ($attempt['success']) {
+                unset($attempt['log_error']);
+                $result = array_replace($result, $attempt, ['method'=>'LDAP']);
+                break;
             }
         }
         if (!count($configs)) {
@@ -675,9 +664,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $result["log_error"][] = "No 'Other LDAP' configurations available.";
         }
         foreach ($this->settings->otherLDAPConfigs as $config) {
-            $this->doLDAPauth($username, $password, $config, $result);
-            if ($result["success"]) {
-                $result["method"] = "Other LDAP ({$config["host"]}:{$config["port"]})";
+            $attempt = ['success'=>false, 'username'=>$username, 'email'=>null, 'fullname'=>null, 'log_error'=>[]];
+            $this->doLDAPauth($username, $password, $config, $attempt);
+            $result['log_error'] = array_merge($result['log_error'], $attempt['log_error']);
+            if ($attempt['success']) {
+                unset($attempt['log_error']);
+                $result = array_replace($result, $attempt, ['method'=>"Other LDAP ({$config['host']}:{$config['port']})"]);
                 break;
             }
         }
@@ -685,173 +677,90 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     //region LDAP
 
+    private function ldapIdentity($ldap, $entry): array {
+        $attributes = @ldap_get_attributes($ldap, $entry);
+        $data = array_fill_keys(['email', 'fullname', 'firstname', 'lastname'], '');
+        foreach ($this->settings->ldapMappings as $key => $names) {
+            foreach ($names as $name) {
+                if (isset($attributes[$name]) && $attributes[$name]['count'] >= 1) {
+                    $data[$key] = trim($attributes[$name][0]);
+                    break;
+                }
+            }
+        }
+        return ['fullname'=>$data['fullname'] !== '' ? $data['fullname'] : trim($data['firstname'].' '.$data['lastname']),
+            'email'=>strtolower($data['email'])];
+    }
+
     private function doLDAPauth($username, $password, $config, &$result) {
-        // As we rely on the ldap module, check that it has been loaded.
-        if (!extension_loaded("ldap")) {
-            $result["log_error"][] = "LDAP extension not loaded.";
+        // Never publish attributes from an entry that has not authenticated.
+        $result['success'] = false;
+        $result['fullname'] = $result['email'] = null;
+        if ($password === '') return;
+        if (!extension_loaded('ldap')) {
+            $result['log_error'][] = 'LDAP extension not loaded.';
             return;
         }
         $config = $this->mergeLDAPConfig($config);
+        $ldap = $search = $read = null;
         try {
-            // Connect to LDAP server.
-            $ldap = ldap_connect($config["url"], $config["port"]);
-            if ($ldap === false) {
-                 throw new \Exception("Failed to connect to LDAP server.");
+            $ldap = ldap_connect($config['url'], $config['port']);
+            if ($ldap === false) throw new \RuntimeException('Failed to connect to LDAP server.');
+            if (is_numeric($config['version']) && $config['version'] > 2) {
+                @ldap_set_option($ldap, LDAP_OPT_PROTOCOL_VERSION, $config['version']);
+                if ($config['start_tls'] && !@ldap_start_tls($ldap)) throw new \RuntimeException('Could not start TLS session.');
             }
-            // Check version and TLS.
-            if (is_numeric($config["version"]) && $config["version"] > 2) {
-                @ldap_set_option($ldap, LDAP_OPT_PROTOCOL_VERSION, $config["version"]);
-                if (isset($config["start_tls"]) && $config["start_tls"]) {
-                    if (@ldap_start_tls($ldap) === false) {
-                        throw new \Exception("Could not start TLS session.");
-                    }
-                }
+            if (is_bool($config['referrals']) && !@ldap_set_option($ldap, LDAP_OPT_REFERRALS, $config['referrals'])) {
+                throw new \RuntimeException('Could not change LDAP referral options.');
             }
-            // Switch referrals.
-            if (isset($config["referrals"]) && is_bool($config["referrals"])) {
-                if (@ldap_set_option($ldap, LDAP_OPT_REFERRALS, $config["referrals"]) === false) {
-                    throw new \Exception("Could not change LDAP referral options");
-                }
-            }
-            // Bind with credentials or anonymously.
-            if (strlen($config['binddn']) && strlen($config['bindpw'])) {
-                if (@ldap_bind($ldap, $config["binddn"], $config["bindpw"]) === false) {
-                    throw new \Exception("LDAP bind with credentials failed.");
-                }
-            } 
-            else {
-                if (@ldap_bind($ldap) === false) {
-                    throw new \Exception("Anonymous LDAP bind failed.");
-                }
-            }
+            $bound = strlen($config['binddn']) && strlen($config['bindpw'])
+                ? @ldap_bind($ldap, $config['binddn'], $config['bindpw']) : @ldap_bind($ldap);
+            if (!$bound) throw new \RuntimeException('LDAP service bind failed.');
             $this->checkBaseDN($ldap, $config);
-            // UTF8 Encode username for LDAPv3.
-            if (@ldap_get_option($ldap, LDAP_OPT_PROTOCOL_VERSION, $version) && $version == 3) {
-                $username = utf8_encode($username);
-            }
-            // Prepare search filter.
-            $filter = sprintf("(&(%s=%s)%s)", $config['userattr'], $this->quoteFilterString($username), $config['userfilter']);
-            $searchBasedn = $config["userdn"];
-            // Prepare search base dn.
-            $searchBasedn = $config["userdn"];
-            if ($searchBasedn != "" && substr($searchBasedn, -1) != ",") {
-                $searchBasedn .= ",";
-            }
-            $searchBasedn .= $config["basedn"];
-            $searchAttributes = $config["attributes"];
-            // Assemble parameters and determine function to use.
-            $funcParams = array($ldap, $searchBasedn, $filter, $searchAttributes);
-            $searchFunc = array(
-                "one" => "ldap_list",
-                "base" => "ldap_read",
-                "sub" => "ldap_search"
-            );
-            $scope = isset($config["userscope"]) && in_array($config["userscope"], array_keys($searchFunc), true) ? $config["userscope"] : "sub";
-            $searchFunc = $searchFunc[$scope];
-
-            // Search.
-
-            if (($resultId = @call_user_func_array($searchFunc, $funcParams)) === false) {
-                // User not found.
-            } 
-            elseif (@ldap_count_entries($ldap, $resultId) >= 1) { 
-                $entryId = @ldap_first_entry($ldap, $resultId);
-                while ($entryId !== false) {
-                    // Get the user dn.
-                    $userDn = @ldap_get_dn($ldap, $entryId);
-                    // Get attributes.
-                    if ($attributes = @ldap_get_attributes($ldap, $entryId)) {
-                        if (is_array($attributes) && count($attributes) > 0) {
-                            // Extract data.
-                            $data = array();
-                            foreach (array_keys($this->settings->ldapMappings) as $key) {
-                                $data[$key] = "";
-                                foreach ($this->settings->ldapMappings[$key] as $attributeName) {
-                                    if (isset($attributes[$attributeName]) && $attributes[$attributeName]["count"] >= 1) {
-                                        $data[$key] = trim($attributes[$attributeName][0]);
-                                        break;
-                                    }
-                                }
-                            }
-                            $result["fullname"] = strlen($data["fullname"]) ? $data["fullname"] : trim("{$data["firstname"]} {$data["lastname"]}");
-                            $result["email"] = strtolower($data["email"]);
+            $searchUsername = $username;
+            if (@ldap_get_option($ldap, LDAP_OPT_PROTOCOL_VERSION, $version) && $version == 3) $searchUsername = utf8_encode($username);
+            $filter = sprintf('(&(%s=%s)%s)', $config['userattr'], $this->quoteFilterString($searchUsername), $config['userfilter']);
+            $base = $config['userdn'];
+            if ($base !== '' && substr($base, -1) !== ',') $base .= ',';
+            $base .= $config['basedn'];
+            $search = match ($config['userscope']) {
+                'one' => @ldap_list($ldap, $base, $filter, $config['attributes']),
+                'base' => @ldap_read($ldap, $base, $filter, $config['attributes']),
+                default => @ldap_search($ldap, $base, $filter, $config['attributes'])
+            };
+            if ($search === false) return;
+            for ($entry = @ldap_first_entry($ldap, $search); $entry !== false; $entry = @ldap_next_entry($ldap, $entry)) {
+                $dn = @ldap_get_dn($ldap, $entry);
+                $identity = $this->ldapIdentity($ldap, $entry);
+                if (!@ldap_bind($ldap, $dn, $password)) continue;
+                if (strlen($config['group']) && !$this->checkGroup($ldap, $config, $config['memberisdn'] ? $dn : $searchUsername)) continue;
+                $read = @ldap_read($ldap, $dn, $filter, $config['attributes']);
+                if ($read !== false) {
+                    for ($userEntry = @ldap_first_entry($ldap, $read); $userEntry !== false; $userEntry = @ldap_next_entry($ldap, $userEntry)) {
+                        if ($dn !== @ldap_get_dn($ldap, $userEntry)) continue;
+                        foreach ($this->ldapIdentity($ldap, $userEntry) as $key => $value) {
+                            if ($value !== '') $identity[$key] = $value;
                         }
+                        break;
                     }
-                    @ldap_free_result($resultId);
-                    // Beware of empty passwords!
-                    if ($password != "") {
-                        // Try binding with the supplied user credentials.
-                        if (@ldap_bind($ldap, $userDn, $password)) {
-                            // Check group if appropiate.
-                            if (strlen($config["group"])) {
-                                // Check type of memberattr (dn or username).
-                                $inGroup = $this->checkGroup($ldap, $config, ($config['memberisdn']) ? $userDn : $username);
-                                $result["success"] = $inGroup;
-                            } 
-                            else {
-                                $result["success"] = true;
-                            }
-                            if ($result["success"]) {
-                                // Try to retrieve attributes while bound as the user.
-                                if (($resultId = @ldap_read($ldap, $userDn, $filter, $searchAttributes)) !== false) {
-                                    if (@ldap_count_entries($ldap, $resultId) >= 1) {
-                                        $entryId = @ldap_first_entry($ldap, $resultId);
-                                        while ($entryId !== false) {
-                                            // Get the user dn.
-                                            // The dn should match the user's dn exactly.
-                                            if ($userDn != @ldap_get_dn($ldap, $entryId)) continue;
-                                            // Get attributes.
-                                            if ($attributes = @ldap_get_attributes($ldap, $entryId)) {
-                                                if (is_array($attributes) && count($attributes) > 0) {
-                                                    // Extract data.
-                                                    $data = array();
-                                                    foreach (array_keys($this->settings->ldapMappings) as $key) {
-                                                        $data[$key] = "";
-                                                        foreach ($this->settings->ldapMappings[$key] as $attributeName) {
-                                                            if (isset($attributes[$attributeName]) && $attributes[$attributeName]["count"] >= 1) {
-                                                                $data[$key] = trim($attributes[$attributeName][0]);
-                                                                break;
-                                                            }
-                                                        }
-                                                    }
-                                                    // Use data from here to set (overwrite) result if not empty.
-                                                    $fullname = strlen($data["fullname"]) ? $data["fullname"] : trim("{$data["firstname"]} {$data["lastname"]}");
-                                                    if (strlen($fullname)) $result["fullname"] = $fullname;
-                                                    if (strlen($data["email"])) $result["email"] = strtolower($data["email"]);
-                                                }
-                                            }
-                                            $entryId = @ldap_next_entry($ldap, $entryId);
-                                        }
-                                    }
-                                    @ldap_free_result($resultId);
-                                }
-                                break;
-                            }
-                        }
+                }
+                if ($this->settings->fallbackToTableUserInfo && (empty($identity['fullname']) || empty($identity['email']))) {
+                    $q = $this->framework->query('SELECT user_email, user_firstname, user_lastname FROM redcap_user_information WHERE username=? LIMIT 1', [$username]);
+                    if ($row = $q->fetch_assoc()) {
+                        if (empty($identity['fullname'])) $identity['fullname'] = trim($row['user_firstname'].' '.$row['user_lastname']);
+                        if (empty($identity['email'])) $identity['email'] = $row['user_email'];
                     }
-                    $entryId = @ldap_next_entry($ldap, $entryId);
                 }
+                $result = array_replace($result, $identity, ['success'=>true]);
+                return;
             }
-            @ldap_unbind($ldap);
-            // Optional fallback mapping of username and email from REDCap's user table
-            if ($this->settings->fallbackToTableUserInfo && (empty($result["fullname"]) || empty($result["email"]))) {
-                $sql = "SELECT `user_email`, `user_firstname`, `user_lastname` FROM redcap_user_information WHERE `username` = ? LIMIT 1";
-                $q = $this->query($sql, [$result["username"]]);
-                if ($row = $q->fetch_assoc()) {
-                    if (empty($result["fullname"])) $result["fullname"] = trim("{$row["user_firstname"]} {$row["user_lastname"]}");
-                    if (empty($result["email"])) $result["email"] = $row["user_email"];
-                }
+        } catch (\Throwable $e) {
+            $result['log_error'][] = 'LDAP error: '.$e->getMessage();
+        } finally {
+            foreach ([$read, $search] as $handle) {
+                if ($handle !== null && $handle !== false) @ldap_free_result($handle);
             }
-        }
-        catch (\Exception $e) {
-            $result["log_error"][] = "LDAP error: " . $e->getMessage();
-        }
-        // Close a potentially open connection
-        try {
-            @ldap_unbind($ldap);
-        }
-        catch (\Throwable $t) { 
-            // Ignore 
+            if ($ldap !== null && $ldap !== false) @ldap_unbind($ldap);
         }
     }
 
@@ -937,10 +846,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
         // Search.
         if (($resultId = @call_user_func_array($searchFunc, $funcParams)) != false) {
-            if (@ldap_count_entries($ldap, $resultId) == 1) {
-                @ldap_free_result($resultId);
-                return true;
-            }
+            $member = @ldap_count_entries($ldap, $resultId) == 1;
+            @ldap_free_result($resultId);
+            return $member;
         }
         // User is not a member of the group.
         return false;
