@@ -25,6 +25,8 @@ $scope=['project_id'=>1,'survey_id'=>2,'event_id'=>3,'form_name'=>'survey','hash
 $keyA=callPrivate($module,'surveyScopeKey',$scope,'flow-a');
 $keyB=callPrivate($module,'surveyScopeKey',$scope,'flow-b');
 check($keyA!==$keyB,'Two public starts must have separate grants');
+check(callPrivate($module,'surveyReturnKey',$scope)!==callPrivate($module,'surveyScopeKey',$scope,'return'),
+    'A client-supplied flow cannot select a return-only grant');
 $private=$scope; $private['record']='12';
 $privateKey=callPrivate($module,'surveyScopeKey',$private);
 foreach (['record'=>'13','event_id'=>4,'instance'=>2,'survey_id'=>5,'project_id'=>6] as $field=>$value) {
@@ -54,10 +56,51 @@ $module->redcap_survey_complete(1,'12','survey',3,null,'public',100,1);
 $state=$_SESSION['redcap_survey_auth_v2'];
 check(!isset($state['grants'][$privateKey]) && isset($state['grants'][$keyB]),'Completion closes only its own response grant');
 
+// Exercise the real return-code lookup with queued database results. The SQL
+// and its parameters are captured; no installation or credentials are loaded.
+class SurveyAuthQueryFixture {
+    public $results = [];
+    public $queries = [];
+    public function query($sql, $params) {
+        $this->queries[] = [$sql, $params];
+        return new ArrayIterator(array_shift($this->results) ?? []);
+    }
+}
+function db_fetch_assoc($cursor) {
+    if (!$cursor->valid()) return null;
+    $row=$cursor->current(); $cursor->next(); return $row;
+}
+$fixture = new SurveyAuthQueryFixture();
+$module->framework = $fixture;
+foreach ([null, [], '', str_repeat('a',16)] as $code) {
+    check(callPrivate($module,'surveyReturnScope',$scope,$code)===null,'Malformed return code is rejected');
+}
+check(!$fixture->queries,'Malformed return codes never reach the database');
+$fixture->results = [[['hash'=>'private','response_id'=>42]],
+    [['project_id'=>1,'survey_id'=>2,'form_name'=>'survey','save_and_return'=>1,'event_id'=>3,'participant_id'=>7,'participant_email'=>'']],
+    [['record'=>'12','response_id'=>42,'instance'=>2,'first_submit_time'=>'2026-01-01 10:00:00']]];
+$returned=callPrivate($module,'surveyReturnScope',$scope,' validcode ');
+check($returned['record']==='12' && $returned['instance']===2 && $returned['hash']==='private',
+    'Return scope comes from the matching response and participant');
+check($fixture->queries[0][1]===[2,3,'VALIDCODE'],'Code lookup is case-normalized and limited to this survey and event');
+check($fixture->queries[2][1]===[7,42],'Resolved response must belong to the selected participant');
+$fixture->results = [[['hash'=>'one','response_id'=>1],['hash'=>'two','response_id'=>2]]];
+check(callPrivate($module,'surveyReturnScope',$scope,'DUPLICATE')===null,'Ambiguous return code fails closed');
+$fixture->results = [[]]; $private['participant_id']=7;
+callPrivate($module,'surveyReturnScope',$private,'VALIDCODE');
+$last=end($fixture->queries);
+check($last[1]===[2,3,'VALIDCODE',7] && str_contains($last[0],'AND p.participant_id=?'),
+    'A private link cannot return into another participant');
+$fixture->results = [[['project_id'=>1,'survey_id'=>2,'form_name'=>'survey','save_and_return'=>1,'event_id'=>3,'participant_id'=>8,'participant_email'=>null]],
+    [['record'=>'12','response_id'=>43,'instance'=>1,'first_submit_time'=>'2026-01-01 10:00:00']]];
+$publicResponse=callPrivate($module,'surveyScope',1,'public',43);
+check($publicResponse['record']==='12' && $publicResponse['response_id']===43,
+    'A verified public response hash can resolve its continuation');
+
 check(callPrivate($module,'surveyPath','https://internal.example/redcap/surveys/?s=example')==='/redcap/surveys/?s=example','Destination retains path on participant origin');
 foreach (['https://example.test//evil.test/path', "https://example.test/\\evil.test/path"] as $url) {
     try { callPrivate($module,'surveyPath',$url); throw new LogicException('Unsafe destination accepted'); }
     catch (RuntimeException $expected) {}
 }
-echo "Passed survey grant scope, lifecycle, password, and destination regressions.\n";
+echo "Passed survey grant scope, lifecycle, return-code, password, and destination regressions.\n";
 ob_end_flush();

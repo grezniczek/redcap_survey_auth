@@ -36,11 +36,11 @@ trait SurveySessionAuth
         return $state;
     }
 
-    private function surveyScope($projectId, string $hash): array
+    private function surveyScope($projectId, string $hash, $responseId = null): array
     {
         // Resolve identity from the database, never from a posted record ID.
         $q = $this->framework->query(
-            'SELECT s.project_id, s.survey_id, s.form_name, p.event_id, p.participant_id, p.participant_email
+            'SELECT s.project_id, s.survey_id, s.form_name, s.save_and_return, p.event_id, p.participant_id, p.participant_email
              FROM redcap_surveys s JOIN redcap_surveys_participants p ON p.survey_id=s.survey_id
              WHERE s.project_id=? AND p.hash=?', [$projectId, $hash]);
         $scope = db_fetch_assoc($q);
@@ -49,15 +49,20 @@ trait SurveySessionAuth
         $scope['record'] = null;
         $scope['response_id'] = null;
         $scope['instance'] = 1;
-        if ($scope['participant_email'] !== null) {
+        $scope['first_submit_time'] = null;
+        if ($scope['participant_email'] !== null || $responseId !== null) {
             $q = $this->framework->query(
-                'SELECT record, response_id, instance FROM redcap_surveys_response WHERE participant_id=?',
-                [$scope['participant_id']]);
+                'SELECT record, response_id, instance, first_submit_time FROM redcap_surveys_response WHERE participant_id=?'.
+                ($responseId !== null ? ' AND response_id=?' : ''),
+                $responseId !== null ? [$scope['participant_id'], $responseId] : [$scope['participant_id']]);
             $response = db_fetch_assoc($q);
             if ($response) {
                 $scope['record'] = (string)$response['record'];
                 $scope['response_id'] = $response['response_id'];
                 $scope['instance'] = (int)$response['instance'];
+                $scope['first_submit_time'] = $response['first_submit_time'];
+            } elseif ($responseId !== null) {
+                throw new \RuntimeException('Invalid response context.');
             }
         }
         return $scope;
@@ -70,6 +75,30 @@ trait SurveySessionAuth
             $scope['record'], (int)$scope['instance'],
             $scope['record'] === null ? [$scope['hash'], $flow] : null
         ]));
+    }
+
+    private function surveyReturnKey(array $scope): string
+    {
+        // Separate namespace: a return-entry grant can never authorize answers.
+        return 'return:'.$this->surveyScopeKey($scope);
+    }
+
+    private function surveyReturnScope(array $source, $code): ?array
+    {
+        if (!is_string($code) || trim($code) === '' || strlen($code) > 15) return null;
+        // REDCap displays codes in uppercase even when stored in lowercase.
+        // This normalization is specific to return codes, not login passwords.
+        $q = $this->framework->query(
+            'SELECT p.hash, r.response_id FROM redcap_surveys_response r
+             JOIN redcap_surveys_participants p ON p.participant_id=r.participant_id
+             WHERE p.survey_id=? AND p.event_id=? AND UPPER(r.return_code)=?'.
+            ($source['record'] !== null ? ' AND p.participant_id=?' : '').' LIMIT 2',
+            $source['record'] !== null
+                ? [$source['survey_id'], $source['event_id'], strtoupper(trim($code)), $source['participant_id']]
+                : [$source['survey_id'], $source['event_id'], strtoupper(trim($code))]);
+        $row = db_fetch_assoc($q);
+        if (!$row || db_fetch_assoc($q)) return null;
+        return $this->surveyScope($source['project_id'], $row['hash'], $row['response_id']);
     }
 
     private function surveyPolicyRevision(array $scope): string
@@ -97,11 +126,14 @@ trait SurveySessionAuth
         return $this->surveyPath($this->framework->getUrl('survey-login.php', true));
     }
 
-    private function surveyStop(string $message, int $status = 403): void
+    private function surveyStop(string $message, int $status = 403, ?string $continueUrl = null): void
     {
         http_response_code($status);
         header('Cache-Control: no-store');
         print htmlspecialchars($message, ENT_QUOTES, 'UTF-8');
+        if ($continueUrl !== null) {
+            print '<p><a href="'.htmlspecialchars($this->surveyPath($continueUrl), ENT_QUOTES, 'UTF-8').'">Continue this response</a></p>';
+        }
         $this->exitAfterHook();
     }
 
@@ -113,37 +145,101 @@ trait SurveySessionAuth
                 $this->surveyStop('A survey session is required. Please enable cookies.');
                 return;
             }
-            $scope = $this->surveyScope($projectId, $_GET['s']);
+            $source = $this->surveyScope($projectId, $_GET['s']);
+            $scope = $source;
+            $returnEntry = isset($_GET['__return']) && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET';
+            $returnCode = isset($_POST['__code']);
+            $validReturnCode = false;
+            if ($returnCode) {
+                $resolved = $this->surveyReturnScope($source, $_POST['__code']);
+                if ($resolved) {
+                    $scope = $resolved;
+                    $validReturnCode = true;
+                }
+            } elseif (!empty($_POST['__response_hash__'])) {
+                $postedHash = $_POST['__response_hash__'];
+                if (!is_string($postedHash)) throw new \RuntimeException('Invalid response hash.');
+                $responseId = \Survey::decryptResponseHash($postedHash, $source['participant_id']);
+                if (!$responseId) throw new \RuntimeException('Invalid response hash.');
+                $scope = $this->surveyScope($projectId, $source['hash'], $responseId);
+                if ($source['record'] !== null && $this->surveyScopeKey($source) !== $this->surveyScopeKey($scope)) {
+                    throw new \RuntimeException('Mismatched response.');
+                }
+            }
             $this->settings = new SurveyAuthSettings($this, $projectId);
             $dictionary = json_decode(\REDCap::getDataDictionary($projectId, 'json', true, null, $scope['form_name'], false));
             if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
             if (!$this->getTaggedFields($dictionary, $projectId, $scope['record'], $scope['event_id'], $scope['form_name'], $scope['instance'])) return;
 
-            // These core routes can change response/instance after the early hook.
-            // Keep them closed until their scope transition is implemented.
-            if (isset($_GET['new']) || isset($_POST['__code']) || isset($_GET['__return']) ||
-                (isset($_GET['instance']) && (int)$_GET['instance'] !== $scope['instance'])) {
-                $this->surveyStop('This survey return or repeat flow is not yet supported by Survey Auth. Please contact the survey administrator.');
+            if (($returnCode || $returnEntry) && !$scope['save_and_return']) {
+                $this->surveyStop('Save & Return is not enabled for this survey.');
                 return;
             }
-            if (!empty($_POST['__response_hash__'])) {
-                $postedHash = $_POST['__response_hash__'];
-                if (!is_string($postedHash) || $scope['record'] === null ||
-                    (string)\Survey::decryptResponseHash($postedHash, $scope['participant_id']) !== (string)$scope['response_id']) {
-                    $this->surveyStop('The submission does not match the authorized survey response. Please reopen its private survey link.');
+
+            if ($returnCode && (!$validReturnCode || isset($_POST['submit-action']) || !empty($_FILES))) {
+                $this->surveyStop('Invalid return code or return request. Please go back and try again.');
+                return;
+            }
+            $newRepeat = isset($_GET['new']) || isset($_POST['__sa_new']);
+            if ($newRepeat) {
+                $project = new \Project($projectId);
+                if ($scope['record'] === null || !$project->isRepeatingFormOrEvent($scope['event_id'], $scope['form_name']) ||
+                    $scope['first_submit_time'] !== null) {
+                    $this->surveyStop('This repeat instance has already been started or is unavailable. Your submission was not saved.', 409,
+                        $this->surveyPath(APP_PATH_SURVEY_FULL).'?s='.rawurlencode($scope['hash']));
                     return;
                 }
+                // Do not let core retarget a stale first-page submission to another
+                // instance after this authorization decision. This request is exact.
+                unset($_GET['new']);
+            }
+            // Core also resolves repeating instances from the private participant.
+            $_GET['instance'] = $scope['instance'];
+            if ($returnCode) {
+                // A code request is navigation only; never let injected answers or
+                // other routing flags turn it into a submission or results request.
+                $_POST = ['__code' => trim($_POST['__code'])];
+                $_GET = ['pid' => $projectId, 's' => $source['hash'], 'instance' => $scope['instance']];
+            } elseif ($returnEntry) {
+                $_GET = ['pid' => $projectId, 's' => $source['hash'], '__return' => '1', 'instance' => $scope['instance']];
             }
 
             $flow = $_POST['__sa_flow'] ?? $_GET['__sa_flow'] ?? '';
             if (!is_string($flow)) $flow = '';
             $state =& $this->surveySession();
-            $key = $this->surveyScopeKey($scope, $flow);
+            $purpose = $returnEntry && $scope['record'] === null ? 'return' : 'survey';
+            $key = $purpose === 'return' ? $this->surveyReturnKey($scope) : $this->surveyScopeKey($scope, $flow);
             $grant = $state['grants'][$key] ?? null;
             $revision = $this->surveyPolicyRevision($scope);
+            if (!$grant && $returnCode && $validReturnCode) {
+                $returnKey = $this->surveyReturnKey($source);
+                $entryGrant = $state['grants'][$returnKey] ?? null;
+                if ($entryGrant && isset($entryGrant['identity']) && hash_equals($entryGrant['revision'], $revision) && $this->surveyIdentityActive($entryGrant)) {
+                    $result = $this->completeSurveyAuthentication(
+                        array_merge($entryGrant['identity'], ['success' => true, 'error' => null, 'log_error' => []]),
+                        $projectId, $scope['form_name'], $scope['event_id'], $scope['instance'], $scope['record']);
+                    if (!$result['success']) {
+                        $this->surveyStop('Authentication metadata could not be saved. Please try again.', 503);
+                        return;
+                    }
+                    $grant = $entryGrant;
+                    unset($grant['purpose'], $grant['identity']);
+                    $grant['expires'] = $grant['issued'] + self::ABSOLUTE_TTL;
+                    $state['grants'][$key] = $grant;
+                    unset($state['grants'][$returnKey]);
+                }
+            }
             if ($grant && hash_equals($grant['revision'], $revision) && $this->surveyIdentityActive($grant)) {
                 $state['grants'][$key]['last'] = time();
-                $this->authorizedSurveyRequest = ['scope' => $scope, 'key' => $key, 'flow' => $flow, 'grant' => $state['grants'][$key]];
+                if ($returnCode && $scope['hash'] !== $source['hash']) {
+                    // Re-enter core with the participant that owns this code. Core's
+                    // fallback can otherwise render a private form with a public
+                    // participant's response hash. 307 retains the code in POST only.
+                    header('Location: '.$this->surveyPath(APP_PATH_SURVEY_FULL).'?s='.rawurlencode($scope['hash']), true, 307);
+                    $this->exitAfterHook();
+                    return;
+                }
+                $this->authorizedSurveyRequest = ['scope' => $scope, 'key' => $key, 'flow' => $flow, 'grant' => $state['grants'][$key], 'new' => $newRepeat];
                 return;
             }
             unset($state['grants'][$key]);
@@ -151,7 +247,8 @@ trait SurveySessionAuth
             // Only navigation is retained. Never store credentials, answers, or uploads.
             $destination = $this->surveyPath(APP_PATH_SURVEY_FULL).'?s='.rawurlencode($scope['hash']);
             $state['logins'][$id] = ['scope' => $scope, 'destination' => $destination,
-                'revision' => $revision, 'expires' => time() + self::LOGIN_TTL, 'csrf' => bin2hex(random_bytes(32))];
+                'revision' => $revision, 'purpose' => $purpose, 'return' => $returnEntry || $returnCode, 'new' => $newRepeat,
+                'expires' => time() + self::LOGIN_TTL, 'csrf' => bin2hex(random_bytes(32))];
             while (count($state['logins']) > 16) array_shift($state['logins']);
             if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 http_response_code(403);
@@ -229,7 +326,7 @@ trait SurveySessionAuth
         $username = $_POST['username'] ?? null;
         $password = $_POST['password'] ?? null;
         unset($_POST['username'], $_POST['password']);
-        $currentScope = $this->surveyScope($scope['project_id'], $scope['hash']);
+        $currentScope = $this->surveyScope($scope['project_id'], $scope['hash'], $scope['response_id']);
         if (!is_string($username) || !is_string($password) ||
             $this->surveyScopeKey($currentScope, $id) !== $this->surveyScopeKey($scope, $id) ||
             !hash_equals($login['revision'], $this->surveyPolicyRevision($scope))) {
@@ -238,7 +335,7 @@ trait SurveySessionAuth
             return;
         }
         if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
-        $result = $this->authenticate($username, $password, $scope['project_id'], $scope['form_name'], $scope['event_id'], $scope['instance'], $scope['record']);
+        $result = $this->authenticate($username, $password, $scope['project_id'], $scope['form_name'], $scope['event_id'], $scope['instance'], $scope['record'], ($login['purpose'] ?? 'survey') !== 'return');
         unset($password);
         if (!$result['success']) {
             // Refresh session CSRF after each credential attempt.
@@ -251,9 +348,18 @@ trait SurveySessionAuth
         $grant = ['username' => $username, 'method' => $result['method'], 'revision' => $login['revision'],
             'issued' => time(), 'last' => time(), 'expires' => time() + self::ABSOLUTE_TTL];
         if ($grant['method'] === 'Table') $grant['account_revision'] = $this->surveyAccountRevision($username);
-        $state['grants'][$this->surveyScopeKey($scope, $id)] = $grant;
+        $returnOnly = ($login['purpose'] ?? 'survey') === 'return';
+        if ($returnOnly) {
+            $grant['purpose'] = 'return';
+            $grant['expires'] = time() + self::LOGIN_TTL;
+            $grant['identity'] = array_intersect_key($result, array_flip(['username', 'email', 'fullname', 'method']));
+        }
+        $state['grants'][$returnOnly ? $this->surveyReturnKey($scope) : $this->surveyScopeKey($scope, $id)] = $grant;
         while (count($state['grants']) > 32) array_shift($state['grants']);
         $destination = $scope['record'] === null ? $login['destination'].'&__sa_flow='.$id : $this->surveyPath($result['targetUrl']);
+        if ($returnOnly) $destination = $login['destination'];
+        if (!empty($login['return'])) $destination .= '&__return=1';
+        if (!empty($login['new'])) $destination .= '&new';
         header('Location: '.$destination, true, 303);
     }
 
@@ -265,6 +371,7 @@ trait SurveySessionAuth
         if ((string)$project_id !== (string)$scope['project_id'] || $instrument !== $scope['form_name'] ||
             (string)$event_id !== (string)$scope['event_id'] || (int)$repeat_instance !== (int)$scope['instance'] ||
             $survey_hash !== $scope['hash'] || ($scope['record'] !== null && (string)$record !== $scope['record'])) return;
+        $this->authorizedSurveyRequest['new'] = false;
         $scope['record'] = (string)$record;
         $scope['response_id'] = $response_id;
         $state =& $this->surveySession();

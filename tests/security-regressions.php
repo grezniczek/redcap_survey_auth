@@ -4,6 +4,7 @@
 namespace ExternalModules {
     class AbstractExternalModule {
         public $exited = false;
+        public $framework;
         public function exitAfterHook() { $this->exited = true; }
     }
 }

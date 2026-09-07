@@ -99,6 +99,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1) {
+        if (!empty($this->authorizedSurveyRequest['new'])) {
+            print "<script>$(function(){ $('<input>', {type:'hidden',name:'__sa_new',value:'1'}).appendTo('#form'); });</script>";
+        }
         // A public start has a session-bound flow ID to isolate concurrent starts.
         // It carries no authority without the grant in this browser's session.
         if ($this->authorizedSurveyRequest && $this->authorizedSurveyRequest['scope']['record'] === null) {
@@ -594,7 +597,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     /**
      * Determines, whether the credentials are valid.
      */
-    function authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance, $record) {
+    function authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance, $record, $writeAuthenticationData = true) {
         if (!is_string($username) || !is_string($password)) return ["success" => false, "error" => $this->settings->failMsg];
         $result = array (
             "success" => false,
@@ -647,118 +650,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 if ($lockoutCount > 0) {
                     $this->clearLockoutStatus($ip);
                 }
-                // Determine, whether any data should be written to the form 
-                $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
-                $taggedFields = $this->getTaggedFields($dd, $project_id, $record, $event_id, $instrument, $repeat_instance);
-                if (!count($taggedFields)) {
-                    $result["success"] = false;
-                    $result["error"] = $this->settings->errorMsg;
-                    $result["log_error"][] = "Could not find a field tagged with the @" . self::$ACTIONTAG . " action tag.";
-                }
-                else {
-                    // Use first, any further are ignored
-                    $tf = $taggedFields[0];
-                    $record_created = false;
-                    // Anything to do?
-                    if ($this->settings->canwrite && (count($tf->map) || $tf->successField !== null)) {
-                        // If this is a nonpublic survey, $record will be set so. Otherwise, we have to get it after saving
-                        $new_record = $record == null;
-                        if ($new_record) {
-                            // Use "NEW" - it will be overwritten later
-                            $record = "NEW";
-                        }
-                        $result["timestamp"] = date($tf->dateFormat);
-                        $data_values = array();
-                        if ($tf->successField !== null) $data_values[$tf->successField] = $tf->successValue;
-                        // Add mapped data items.
-                        foreach ($tf->map as $k => $v) {
-                            if (strlen($tf->map[$k])) $data_values[$v] = $result[$k];
-                        }
-                        // Prepare data object for REDCap::saveData
-                        $Proj = new \Project($project_id);
-                        if ($Proj->isRepeatingEvent($event_id)) {
-                            $data_to_save = array(
-                                $record => array(
-                                    "repeat_instances" => array(
-                                        $event_id => array(
-                                            "" => array(
-                                                $repeat_instance => $data_values
-                                            )
-                                        )
-                                    )
-                                )
-                            );
-                        }
-                        else if ($Proj->isRepeatingForm($event_id, $instrument)) {
-                            $data_to_save = array(
-                                $record => array(
-                                    "repeat_instances" => array(
-                                        $event_id => array(
-                                            $instrument => array(
-                                                $repeat_instance => $data_values
-                                            )
-                                        )
-                                    )
-                                )
-                            );
-                        }
-                        else {
-                            $data_to_save = array(
-                                $record => array(
-                                    $event_id => $data_values
-                                )
-                            );
-                        }
-                        $response = \REDCap::saveData(
-                            $project_id,       // project_id
-                            'array',           // dataFormat
-                            $data_to_save,     // data
-                            'normal',          // overwriteBehavior
-                            null,              // dateFormat
-                            null,              // type (eav, flat)
-                            null,              // group_id
-                            true,              // dataLogging
-                            true,              // performAutoCalc
-                            true,              // commitData
-                            false,             // logAsAutoCalculations
-                            true,              // skipCalcFields
-                            [],                // changeReasons
-                            false,             // returnDataComparisonArray
-                            true,              // skipFileUploadFields
-                            false,             // removeLockedFields
-                            $new_record,       // addingAutoNumberedRecords
-                            true,              // bypassPromisCheck
-                            null,              // csvDelimiter
-                            false,             // bypassEconsentProtection
-                            null               // loggingUser
-                        );
-                        if (!is_array($response) || !empty($response["errors"]) || ($new_record && !isset($response["ids"][$record]))) {
-                            if ($new_record) $record = null;
-                            $result["success"] = false;
-                            $result["error"] = $this->settings->errorMsg;
-                            $result["log_error"][] = "Authentication metadata could not be saved.";
-                            break;
-                        }
-                        else {
-                            $record_created = true;
-                            if ($new_record) {
-                                $record = $response["ids"][$record];
-                            }
-                        }
-                    }
-                    // Get link to survey and add auth info
-                    if ($record == null) {
-                        $survey_id = \Survey::getSurveyId($instrument);
-                        $survey_hash = \Survey::getSurveyHash($survey_id, $event_id);
-                        $link = APP_PATH_SURVEY_FULL . "?s={$survey_hash}";
-                    }
-                    else {
-                        $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance, $project_id, $record_created);
-                        $survey_hash = explode("?s=", $link, 2)[1];
-                    }
-                    $result["targetUrl"] = $link;
-                    $result["record"] = $record;
-                }
+                $result = $this->completeSurveyAuthentication($result, $project_id, $instrument, $event_id, $repeat_instance, $record, $writeAuthenticationData);
+                $record = $result['record'] ?? $record;
             } while (false);
         }
         catch (\Exception $e) {
@@ -786,6 +679,126 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         return $result;
     }
 
+
+    // Complete metadata writes only after the response scope is known. This is
+    // shared by direct survey login and authenticated return-code selection.
+    private function completeSurveyAuthentication(array $result, $project_id, $instrument, $event_id, $repeat_instance, $record, bool $writeAuthenticationData = true): array {
+        do {
+            // Determine whether authentication metadata should be written.
+            $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
+            $taggedFields = $this->getTaggedFields($dd, $project_id, $record, $event_id, $instrument, $repeat_instance);
+            if (!count($taggedFields)) {
+                $result["success"] = false;
+                $result["error"] = $this->settings->errorMsg;
+                $result["log_error"][] = "Could not find a field tagged with the @" . self::$ACTIONTAG . " action tag.";
+            }
+            else {
+                // Use first, any further are ignored
+                $tf = $taggedFields[0];
+                $record_created = false;
+                // Anything to do?
+                if ($writeAuthenticationData && $this->settings->canwrite && (count($tf->map) || $tf->successField !== null)) {
+                    // If this is a nonpublic survey, $record will be set so. Otherwise, we have to get it after saving
+                    $new_record = $record == null;
+                    if ($new_record) {
+                        // Use "NEW" - it will be overwritten later
+                        $record = "NEW";
+                    }
+                    $result["timestamp"] = date($tf->dateFormat);
+                    $data_values = array();
+                    if ($tf->successField !== null) $data_values[$tf->successField] = $tf->successValue;
+                    // Add mapped data items.
+                    foreach ($tf->map as $k => $v) {
+                        if (strlen($tf->map[$k])) $data_values[$v] = $result[$k];
+                    }
+                    // Prepare data object for REDCap::saveData
+                    $Proj = new \Project($project_id);
+                    if ($Proj->isRepeatingEvent($event_id)) {
+                        $data_to_save = array(
+                            $record => array(
+                                "repeat_instances" => array(
+                                    $event_id => array(
+                                        "" => array(
+                                            $repeat_instance => $data_values
+                                        )
+                                    )
+                                )
+                            )
+                        );
+                    }
+                    else if ($Proj->isRepeatingForm($event_id, $instrument)) {
+                        $data_to_save = array(
+                            $record => array(
+                                "repeat_instances" => array(
+                                    $event_id => array(
+                                        $instrument => array(
+                                            $repeat_instance => $data_values
+                                        )
+                                    )
+                                )
+                            )
+                        );
+                    }
+                    else {
+                        $data_to_save = array(
+                            $record => array(
+                                $event_id => $data_values
+                            )
+                        );
+                    }
+                    $response = \REDCap::saveData(
+                        $project_id,       // project_id
+                        'array',           // dataFormat
+                        $data_to_save,     // data
+                        'normal',          // overwriteBehavior
+                        null,              // dateFormat
+                        null,              // type (eav, flat)
+                        null,              // group_id
+                        true,              // dataLogging
+                        true,              // performAutoCalc
+                        true,              // commitData
+                        false,             // logAsAutoCalculations
+                        true,              // skipCalcFields
+                        [],                // changeReasons
+                        false,             // returnDataComparisonArray
+                        true,              // skipFileUploadFields
+                        false,             // removeLockedFields
+                        $new_record,       // addingAutoNumberedRecords
+                        true,              // bypassPromisCheck
+                        null,              // csvDelimiter
+                        false,             // bypassEconsentProtection
+                        null               // loggingUser
+                    );
+                    if (!is_array($response) || !empty($response["errors"]) || ($new_record && !isset($response["ids"][$record]))) {
+                        if ($new_record) $record = null;
+                        $result["success"] = false;
+                        $result["error"] = $this->settings->errorMsg;
+                        $result["log_error"][] = "Authentication metadata could not be saved.";
+                        break;
+                    }
+                    else {
+                        $record_created = true;
+                        if ($new_record) {
+                            $record = $response["ids"][$record];
+                        }
+                    }
+                }
+                // Get the survey link.
+                if ($record == null) {
+                    $survey_id = \Survey::getSurveyId($instrument);
+                    $survey_hash = \Survey::getSurveyHash($survey_id, $event_id);
+                    $link = APP_PATH_SURVEY_FULL . "?s={$survey_hash}";
+                }
+                else {
+                    $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance, $project_id, $record_created);
+                    $survey_hash = explode("?s=", $link, 2)[1];
+                }
+                $result["targetUrl"] = $link;
+                $result["record"] = $record;
+            }
+        } while (false);
+        return $result;
+    }
 
     private function authenticateTable($username, $password, &$result) {
         try {
