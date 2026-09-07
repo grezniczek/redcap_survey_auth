@@ -284,6 +284,22 @@ trait SurveySessionAuth
         $state =& $this->surveySession();
         $login = $state['logins'][$id];
         $escape = static fn($value) => htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+        // Resolve branding from the stored login scope, including on the EM endpoint.
+        $branding = db_fetch_assoc($this->framework->query(
+            'SELECT s.title, s.hide_title, e.doc_id FROM redcap_surveys s
+             LEFT JOIN redcap_edocs_metadata e ON e.doc_id=s.logo AND e.project_id=s.project_id AND e.delete_date IS NULL
+             WHERE s.project_id=? AND s.survey_id=?',
+            [$login['scope']['project_id'], $login['scope']['survey_id']])) ?: [];
+        $surveyTitle = empty($branding['hide_title']) ? $escape(strip_tags($branding['title'] ?? '')) : '';
+        $logoSource = '';
+        if (!empty($branding['doc_id'])) {
+            // Embed only the configured logo. No unauthenticated attachment route is needed.
+            $file = \REDCap::getFile($branding['doc_id']);
+            $image = $file ? @getimagesizefromstring($file[2]) : false;
+            if ($image && in_array($image['mime'], ['image/jpeg', 'image/png', 'image/gif', 'image/bmp'], true)) {
+                $logoSource = 'data:'.$image['mime'].';base64,'.base64_encode($file[2]);
+            }
+        }
         $action = $escape($this->surveyLoginUrl());
         // Keep the framework's CSRF protection, in addition to session-bound CSRF.
         // Reuse a valid framework cookie so opening another login tab does not

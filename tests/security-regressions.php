@@ -11,6 +11,9 @@ namespace ExternalModules {
 
 namespace {
     class REDCap {
+        public static $testFile = false;
+        public static $fileReads = [];
+        public static function getFile($id) { self::$fileReads[] = $id; return self::$testFile; }
         public static function getRecordIdField() { return 'record_id'; }
     }
     class Form {
