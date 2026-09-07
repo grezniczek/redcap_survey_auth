@@ -51,6 +51,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             return;
         }
 
+        // Core file endpoints also accept survey hashes without the survey passthrough.
+        if (isset($_GET['s']) && in_array($page, ['DataEntry/file_upload.php', 'DataEntry/file_download.php',
+            'DataEntry/file_delete.php', 'DataEntry/image_view.php'], true)) {
+            $this->protectSurveyBeforeProcessing($project_id);
+            return;
+        }
         // Nothing to do if not a public dashboard or report page
         if ($page != "surveys/index.php") return;
         // Ambiguous selectors must never select a different protection policy

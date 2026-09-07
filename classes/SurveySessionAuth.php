@@ -169,6 +169,12 @@ trait SurveySessionAuth
             $this->settings = new SurveyAuthSettings($this, $projectId);
             $dictionary = json_decode(\REDCap::getDataDictionary($projectId, 'json', true, null, $scope['form_name'], false));
             if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
+            // Bind files even when this instrument is unprotected: an untagged
+            // survey hash must not act as a route into a protected instrument.
+            if (!$this->surveyFileRequestAllowed($scope)) {
+                $this->surveyStop('This file request does not belong to a saved survey response or its survey content.', 403);
+                return;
+            }
             if (!$this->getTaggedFields($dictionary, $projectId, $scope['record'], $scope['event_id'], $scope['form_name'], $scope['instance'])) return;
 
             if (($returnCode || $returnEntry) && !$scope['save_and_return']) {
@@ -260,6 +266,64 @@ trait SurveySessionAuth
         } catch (\Throwable $e) {
             $this->surveyStop('Survey authorization could not be checked. Please contact the survey administrator.', 503);
         }
+    }
+
+    private function surveyFileRequestAllowed(array $scope): bool
+    {
+        $route = $_GET['__passthru'] ?? (defined('PAGE') ? PAGE : '');
+        if (!is_string($route)) return false;
+        $route = urldecode($route); // Match core passthrough dispatch.
+        if (!in_array($route, ['DataEntry/file_upload.php', 'DataEntry/file_download.php',
+            'DataEntry/file_delete.php', 'DataEntry/image_view.php'], true)) return true;
+        foreach (['pid' => $scope['project_id'], 'event_id' => $scope['event_id'], 'instance' => $scope['instance']] as $key => $expected) {
+            foreach ([$_GET, $_POST, $_REQUEST] as $input) {
+                if (isset($input[$key]) && (!is_scalar($input[$key]) || (string)$input[$key] !== (string)$expected)) return false;
+            }
+        }
+        $upload = $route === 'DataEntry/file_upload.php';
+        $image = $route === 'DataEntry/image_view.php';
+        $id = $_GET['id'] ?? null;
+        if (!is_string($id)) return false;
+        if (!$upload && !ctype_digit($id)) return false;
+        // These files are survey content, not response data. Never allow deletion.
+        if ($image || ($route === 'DataEntry/file_download.php' && ($_GET['type'] ?? '') === 'attachment')) {
+            $q = $this->framework->query(
+                'SELECT 1 FROM redcap_surveys s JOIN redcap_edocs_metadata e ON e.project_id=s.project_id
+                 WHERE s.project_id=? AND s.survey_id=? AND e.doc_id=? AND e.delete_date IS NULL
+                 AND (s.logo=e.doc_id OR EXISTS (SELECT 1 FROM redcap_metadata m WHERE m.project_id=s.project_id
+                 AND m.form_name=s.form_name AND m.edoc_id=e.doc_id))',
+                [$scope['project_id'], $scope['survey_id'], $id]);
+            if (db_fetch_assoc($q)) return true;
+            if (!$image) return false;
+        }
+        $record = $upload ? rawurldecode(urldecode($id)) : ($_GET['record'] ?? ($image ? $scope['record'] : null));
+        if ($scope['record'] === null || !is_string($record) || $record !== $scope['record']) return false;
+        if (!$image && (!isset($_GET['event_id']) || !isset($_GET['instance']))) return false;
+        if (isset($_GET['page']) && $_GET['page'] !== $scope['form_name']) return false;
+        $field = $upload ? ($_POST['field_name'] ?? null) : ($_GET['field_name'] ?? null);
+        if (!is_string($field) && !($image && $field === null)) return false;
+        if ($upload) {
+            $separator = strpos($field, '-');
+            if ($separator === false || ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') return false;
+            $field = substr($field, 0, $separator); // Match file_upload.php.
+        }
+        if ($upload) {
+            $q = $this->framework->query('SELECT 1 FROM redcap_metadata WHERE project_id=? AND form_name=? AND field_name=? AND element_type=?',
+                [$scope['project_id'], $scope['form_name'], $field, 'file']);
+            return (bool)db_fetch_assoc($q);
+        }
+        // Accept current answers and pending uploads, but only at this exact location.
+        $table = \Records::getDataTable($scope['project_id']);
+        $q = $this->framework->query("SELECT 1 FROM redcap_edocs_metadata e
+            JOIN redcap_metadata f ON f.project_id=e.project_id AND f.form_name=? AND f.element_type='file'
+            WHERE e.project_id=? AND e.doc_id=? AND e.delete_date IS NULL AND (? IS NULL OR f.field_name=?)
+            AND (EXISTS (SELECT 1 FROM $table d WHERE d.project_id=e.project_id AND d.value=CAST(e.doc_id AS CHAR)
+                AND d.record=? AND d.event_id=? AND COALESCE(d.instance,1)=? AND d.field_name=f.field_name)
+            OR EXISTS (SELECT 1 FROM redcap_edocs_data_mapping m WHERE m.project_id=e.project_id AND m.doc_id=e.doc_id
+                AND m.record=? AND m.event_id=? AND m.instance=? AND m.field_name=f.field_name))",
+            [$scope['form_name'], $scope['project_id'], $id, $field, $field, $record, $scope['event_id'], $scope['instance'],
+                $record, $scope['event_id'], $scope['instance']]);
+        return (bool)db_fetch_assoc($q);
     }
 
     private function surveyIdentityActive(array $grant): bool
