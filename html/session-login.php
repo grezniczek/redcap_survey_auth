@@ -2,7 +2,7 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= $surveyTitle !== '' ? $surveyTitle.' — ' : '' ?>Survey login</title>
+<title><?= $surveyTitle !== '' ? $surveyTitle.' — ' : '' ?><?= $escape($loginHeading) ?></title>
 <style>
 body { font: 1rem/1.5 system-ui, sans-serif; background: #f4f5f7; color: #222; margin: 0; }
 main { max-width: 28rem; margin: 8vh auto; padding: 2rem; background: white; border-radius: .5rem; }
@@ -15,8 +15,8 @@ button { margin-top: 1.5rem; padding: .7rem 1.5rem; font: inherit; cursor: point
 </style>
 <main>
 <?php if ($logoSource !== ''): ?><img class="survey-logo" src="<?= $logoSource ?>" alt="Survey logo"><?php endif; ?>
-<?php if ($surveyTitle !== ''): ?><h1><?= $surveyTitle ?></h1><h2>Survey login</h2><?php else: ?>
-<h1>Survey login</h1>
+<?php if ($surveyTitle !== ''): ?><h1><?= $surveyTitle ?></h1><h2><?= $escape($loginHeading) ?></h2><?php else: ?>
+<h1><?= $escape($loginHeading) ?></h1>
 <?php endif; ?>
 <div><?= $instructions ?></div>
 <?php if ($error !== ''): ?><p role="alert"><?= $error ?></p><?php endif; ?>

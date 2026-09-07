@@ -5,12 +5,14 @@ use ExternalModules\AbstractExternalModule;
 require_once "classes/SurveyAuthSettings.php";
 require_once "classes/SurveyAuthInfo.php";
 require_once "classes/SurveySessionAuth.php";
+require_once "classes/PublicResourceAuth.php";
 
 /**
  * ExternalModule class for survey authentication.
  */
 class SurveyAuthExternalModule extends AbstractExternalModule {
     use SurveySessionAuth;
+    use PublicResourceAuth;
     
     public static $ACTIONTAG = "SURVEY-AUTH";
 
@@ -58,7 +60,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             return;
         }
         // Nothing to do if not a public dashboard or report page
-        if ($page != "surveys/index.php") return;
+        $publicFile = in_array($page, ['DataEntry/file_download.php', 'DataEntry/image_view.php'], true)
+            && (isset($_GET['__dashboard']) || isset($_GET['__report']));
+        if ($page != "surveys/index.php" && !$publicFile) return;
         // Ambiguous selectors must never select a different protection policy
         // from the resource REDCap will render.
         if (isset($_GET["__dashboard"], $_GET["__report"])) {
@@ -121,93 +125,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     #region Public Reports
 
     private function protect_report($project_id) {
-        // Gather report data and settings
-        $report_id = $GLOBALS["report_id"];
-        $this->settings = new SurveyAuthSettings($this, $project_id, 0, $report_id);
-        $apply_to_endpoint = $this->settings->report_endpoint;
-        list($endpoint_options, $endpoint) = $this->get_endpoint();
-        // Deny external access
-        if ($endpoint_options && $endpoint == "external" && $this->settings->report_denyexternal) {
-            header("HTTP/1.0 403 Forbidden");
-            print $this->settings->report_noaccessmsg;
-            $this->exitAfterHook();
-            return;
-        }
-        // Login
-        if ($this->settings->report_protected && ($endpoint == $apply_to_endpoint || $apply_to_endpoint == "both")) {
-            // Default response (unless changed)
-            $response = array ( 
-                "success" => false,
-                "error" => null
-            );
-            // Already authenticated?
-            $session_key = "SurveyAuth-".date("Y-m-d")."-Report-".$report_id;
-            if ($_SESSION[$session_key] === true) {
-                $response["success"] = true;
-            }
-            // Get values from POST.
-            if (isset($_POST["{$this->PREFIX}-username"]) && 
-                isset($_POST["{$this->PREFIX}-password"]) &&
-                isset($_POST["{$this->PREFIX}-blob"])) {
-                // Extract data from POST.
-                $username = $_POST["{$this->PREFIX}-username"];
-                $password = $_POST["{$this->PREFIX}-password"];
-                $encrypted_blob = $_POST["{$this->PREFIX}-blob"];
-                // Validate blob.
-                $blob = $this->fromSecureBlob($encrypted_blob);
-                if ($blob == null || $blob["project_id"] != $project_id || $blob["report_id"] != $report_id) {
-                    $response = array (
-                        "success" => false,
-                        "error" => $this->settings->failMsg
-                    );
-                    $_SESSION[$session_key] = null;
-                }
-                else {
-                    // Blob was valid, try to authenticate.
-                    $response = $this->authenticatePublicDashboardOrReport($username, $password, $project_id, "Public Report $report_id");
-                    if ($response["success"] === true) {
-                        $_SESSION[$session_key] = true;
-                    }
-                }
-            }
-            // Success? If not, then authentication needs to be performed.
-            if ($response["success"] !== true) {
-                $report = \DataExport::getReports($report_id, [], [], $project_id);
-                // Inject JavaScript and HTML.
-                $js = file_get_contents(__DIR__ . "/js/surveyauth.js");
-                $blob = $this->toSecureBlob(array(
-                    "project_id" => $project_id,
-                    "report_id" => $report_id,
-                    "random" => $this->genKey(16) // Add some random stuff.
-                ));
-                $template = file_get_contents(__DIR__ . "/html/report_ui.html");
-                $replace = array(
-                    "{JS}" => $js,
-                    "{INSTRUCTIONS}" => $this->settings->text,
-                    "{PREFIX}" => $this->PREFIX,
-                    "{REPORTTITLE}" => decode_filter_tags($report["title"]),
-                    "{USERNAMELABEL}" => $this->settings->usernameLabel,
-                    "{PASSWORDLABEL}" => $this->settings->passwordLabel,
-                    "{SUBMITLABEL}" => $this->settings->submitLabel,
-                    "{FAILMSG}" => $response["error"],
-                    "{ERROR}" => strlen($response["error"]) ? "block" : "none",
-                    "{BLOB}" => $blob,
-                );
-                $login_dialog = str_replace(array_keys($replace), array_values($replace), $template);
-                $objHtmlPage = new \HtmlPage();
-                $objHtmlPage->addStylesheet("report_public.css", 'screen,print');
-                $objHtmlPage->setPageTitle(strip_tags($report["title"]));
-                $objHtmlPage->PrintHeader();
-                print $login_dialog;
-                $objHtmlPage->PrintFooter();
-                // No further processing (i.e. do not let REDCap render the dashboard page).
-                $this->exitAfterHook();
-            }
-            else {
-                // Success == true means that authentication has succeded.
-                // There is nothing to do. We let the user continue to the dashboard.
-            }
-        }
+        $this->protectPublicResource($project_id, 'report');
     }
 
     private function add_report_settings($project_id) {
@@ -322,94 +240,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     #region Public Dashboards
 
     private function protect_dashboard($project_id) {
-        // Gather dashboard data and settings
-        $dash_id = $GLOBALS["dash_id"];
-        $this->settings = new SurveyAuthSettings($this, $project_id, $dash_id, 0);
-        $apply_to_endpoint = $this->settings->dash_endpoint;
-        list($endpoint_options, $endpoint) = $this->get_endpoint();
-        // Deny external access
-        if ($endpoint_options && $endpoint == "external" && $this->settings->dash_denyexternal) {
-            header("HTTP/1.0 403 Forbidden");
-            print $this->settings->dash_noaccessmsg;
-            $this->exitAfterHook();
-            return;
-        }
-        // Login
-        if ($this->settings->dash_protected && ($endpoint == $apply_to_endpoint || $apply_to_endpoint == "both")) {
-            // Default response (unless changed)
-            $response = array ( 
-                "success" => false,
-                "error" => null
-            );
-            // Already authenticated?
-            $session_key = "SurveyAuth-".date("Y-m-d")."-Dashboard-".$dash_id;
-            if ($_SESSION[$session_key] === true) {
-                $response["success"] = true;
-            }
-            // Get some dashboard info
-            $dashboards = new \ProjectDashboards();
-            $dash = $dashboards->getDashboards($project_id, $dash_id);
-            // Get values from POST.
-            if (isset($_POST["{$this->PREFIX}-username"]) && 
-                isset($_POST["{$this->PREFIX}-password"]) &&
-                isset($_POST["{$this->PREFIX}-blob"])) {
-                // Extract data from POST.
-                $username = $_POST["{$this->PREFIX}-username"];
-                $password = $_POST["{$this->PREFIX}-password"];
-                $encrypted_blob = $_POST["{$this->PREFIX}-blob"];
-                // Validate blob.
-                $blob = $this->fromSecureBlob($encrypted_blob);
-                if ($blob == null || $blob["project_id"] != $project_id || $blob["dash_id"] != $dash_id) {
-                    $response = array (
-                        "success" => false,
-                        "error" => $this->settings->failMsg
-                    );
-                    $_SESSION[$session_key] = null;
-                }
-                else {
-                    // Blob was valid, try to authenticate.
-                    $response = $this->authenticatePublicDashboardOrReport($username, $password, $project_id, "Public Dashboard $dash_id");
-                    if ($response["success"] === true) {
-                        $_SESSION[$session_key] = true;
-                    }
-                }
-            }
-            // Success? If not, then authentication needs to be performed.
-            if ($response["success"] !== true) {
-                // Inject JavaScript and HTML.
-                $js = file_get_contents(__DIR__ . "/js/surveyauth.js");
-                $blob = $this->toSecureBlob(array(
-                    "project_id" => $project_id,
-                    "dash_id" => $dash_id,
-                    "random" => $this->genKey(16) // Add some random stuff.
-                ));
-                $template = file_get_contents(__DIR__ . "/html/dash_ui.html");
-                $replace = array(
-                    "{JS}" => $js,
-                    "{INSTRUCTIONS}" => $this->settings->text,
-                    "{PREFIX}" => $this->PREFIX,
-                    "{DASHBOARDTITLE}" => decode_filter_tags($dash["title"]),
-                    "{USERNAMELABEL}" => $this->settings->usernameLabel,
-                    "{PASSWORDLABEL}" => $this->settings->passwordLabel,
-                    "{SUBMITLABEL}" => $this->settings->submitLabel,
-                    "{FAILMSG}" => $response["error"],
-                    "{ERROR}" => strlen($response["error"]) ? "block" : "none",
-                    "{BLOB}" => $blob,
-                );
-                $objHtmlPage = new \HtmlPage();
-                $objHtmlPage->addStylesheet("dashboard_public.css", 'screen,print');
-                $objHtmlPage->setPageTitle(strip_tags($dash["title"]));
-                $objHtmlPage->PrintHeader();
-                print str_replace(array_keys($replace), array_values($replace), $template);
-                $objHtmlPage->PrintFooter();
-                // No further processing (i.e. do not let REDCap render the dashboard page).
-                $this->exitAfterHook();
-            }
-            else {
-                // Success == true means that authentication has succeded.
-                // There is nothing to do. We let the user continue to the dashboard.
-            }
-        }
+        $this->protectPublicResource($project_id, 'dashboard');
     }
 
     private function add_dashboard_settings($project_id) {
@@ -518,14 +349,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
         }
         return $fields;
-    }
-
-    private function base64_url_encode($input) {
-        return strtr($input, '+/=', '._-');
-    }
-
-    private function base64_url_decode($input) {
-        return strtr($input, '._-', '+/=');
     }
 
     #endregion
@@ -1175,64 +998,5 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     //endregion
 
     #endregion
-
-    //region Secret Blobs
-
-    private $cipher = "AES-256-CBC";
-
-    /**
-     * Helper function to package an array into an encrytped blob (base64-encoded).
-     * $data is expected to be an associative array.
-     */
-    private function toSecureBlob($data) {
-        $this->checkKeys();
-        $jsonData = json_encode($data);
-        $key = base64_decode($this->settings->blobSecret);
-        $ivLen = openssl_cipher_iv_length($this->cipher);
-        $iv = openssl_random_pseudo_bytes($ivLen);
-        $aesData = openssl_encrypt($jsonData, $this->cipher, $key, OPENSSL_RAW_DATA, $iv);
-        $hmac = hash_hmac('sha256', $aesData, $this->settings->blobHmac, true);
-        $blob = base64_encode($iv.$hmac.$aesData);
-        return $blob;
-    }
-
-    /**
-     * Helper function to decode an encrypted data blob.
-     * Retruns an associative array or null if there was a problem.
-     */
-    private function fromSecureBlob($blob) {
-        $this->checkKeys();
-        $raw = base64_decode($blob);
-        $key = base64_decode($this->settings->blobSecret);
-        $ivlen = openssl_cipher_iv_length($this->cipher);
-        $iv = substr($raw, 0, $ivlen);
-        $blobHmac = substr($raw, $ivlen, 32);
-        $aesData = substr($raw, $ivlen + 32);
-        $jsonData = openssl_decrypt($aesData, $this->cipher, $key, OPENSSL_RAW_DATA, $iv);
-        $calcHmac = hash_hmac('sha256', $aesData, $this->settings->blobHmac, true);
-        // Only return data if the hashes match.
-        return hash_equals($blobHmac, $calcHmac) ? json_decode($jsonData, true) : null;
-    }
-
-    /**
-     * Checks if cryptographic keys have been generated already, and if not generates and stores them.
-     */
-    private function checkKeys() {
-        if (!strlen($this->settings->blobSecret)) {
-            $this->settings->blobSecret = $this->genKey(32);
-            $this->setSystemSetting("surveyauth_blobsecret", $this->settings->blobSecret);
-        }
-        if (!strlen($this->settings->blobHmac)) {
-            $this->settings->blobHmac = $this->genKey(32);
-            $this->setSystemSetting("surveyauth_blobhmac", $this->settings->blobHmac);
-        }
-    }
-
-    private function genKey($keySize) {
-        $key = openssl_random_pseudo_bytes($keySize);
-        return base64_encode($key);
-    }
-
-    //endregion
 
 }
