@@ -4,11 +4,13 @@ use ExternalModules\AbstractExternalModule;
 
 require_once "classes/SurveyAuthSettings.php";
 require_once "classes/SurveyAuthInfo.php";
+require_once "classes/SurveySessionAuth.php";
 
 /**
  * ExternalModule class for survey authentication.
  */
 class SurveyAuthExternalModule extends AbstractExternalModule {
+    use SurveySessionAuth;
     
     public static $ACTIONTAG = "SURVEY-AUTH";
 
@@ -62,7 +64,14 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $page_type = "";
         if (isset($_GET["__dashboard"])) $page_type = "dashboard";
         if (isset($_GET["__report"])) $page_type = "report";
-        if (!in_array($page_type, ["dashboard", "report"])) return;
+        if (isset($_GET['s']) && $page_type !== '') {
+            $this->surveyStop('Conflicting resource selectors.', 400);
+            return;
+        }
+        if (!in_array($page_type, ["dashboard", "report"])) {
+            $this->protectSurveyBeforeProcessing($project_id);
+            return;
+        }
 
         if ($page_type == "dashboard") {
             $this->protect_dashboard($project_id);
@@ -90,7 +99,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1) {
-        $this->protect_survey($project_id, $record, $instrument, $event_id, $survey_hash, $response_id, $repeat_instance);
+        // A public start has a session-bound flow ID to isolate concurrent starts.
+        // It carries no authority without the grant in this browser's session.
+        if ($this->authorizedSurveyRequest && $this->authorizedSurveyRequest['scope']['record'] === null) {
+            $flow = json_encode($this->authorizedSurveyRequest['flow'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+            print "<script>$(function(){ $('<input>', {type:'hidden',name:'__sa_flow',value:$flow}).appendTo('#form'); });</script>";
+        }
     }
 
     #endregion
@@ -467,176 +481,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     #region Surveys
 
-    function protect_survey($project_id, $record, $instrument, $event_id, $survey_hash, $response_id, $repeat_instance) {
-        if (!empty($response_id)) {
-            $participant_id = $GLOBALS["participant_id"];
-            $record = \Survey::getRecordFromPartId([$participant_id])[$participant_id];
-            if ($record != null) {
-                // We can be sure that the record exists! So we can safely do this:
-                // We must set this to something other than 0 in order to get @IF action tag parsing to work (Form::evaluateIfActionTag() relies on this global).
-                $GLOBALS["hidden_edit"] = 1;
-            }
-        }
-
-        $this->settings = new SurveyAuthSettings($this, $project_id, 0, 0);
-
-        // Check if auth has already happened, in which case we stop any further processing
-        if (isset($_GET["__at"])) {
-            $at_blob = $this->base64_url_decode($_GET["__at"]);
-            $at_decoded = $this->fromSecureBlob($at_blob);
-            if ($at_decoded == "%%".$survey_hash) {
-                $new_blob = $this->base64_url_encode($this->toSecureBlob("%%".$survey_hash));
-                // Modify form action to include auth info
-                print "<script>$(function() { $('#form').attr('action', $('#form').attr('action') + '&__at={$new_blob}'); }); </script>";
-                return;
-            } 
-        }
-
-        // This is needed for older versions of REDCap in order to write crytographic keys and lockouts to system settings.
-        if (method_exists($this, "disableUserBasedSettingPermissions")) {
-            $this->disableUserBasedSettingPermissions();
-        }
-
-        // Get the project's data dictionary for the current instrument and find the action tag.
-        $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
-        $taggedFields = $this->getTaggedFields($dd, $project_id, $record, $event_id, $instrument, $repeat_instance);
-        // If there is none, then there is nothing to do.
-        if (!count($taggedFields)) return;
-
-        // Default response (unless changed)
-        $response = array ( 
-            "success" => false,
-            "error" => null
-        );
-
-        // Get values from POST.
-        if (isset($_POST["{$this->PREFIX}-username"]) && 
-            isset($_POST["{$this->PREFIX}-password"]) &&
-            isset($_POST["{$this->PREFIX}-blob"])) {
-            // Band-aid fix: Remove log entry with clear text password from redcap_log_view table
-            $delete_log = $this->query(
-                "DELETE FROM `redcap_log_view` WHERE `project_id` = ? AND `event` = 'PAGE_VIEW' AND `form_name` = ? AND `miscellaneous` LIKE '// POST%[redcap_survey_auth-password]%'",
-                [
-                    $project_id,
-                    $instrument
-                ]
-            );
-            // Extract data from POST.
-            $username = $_POST["{$this->PREFIX}-username"];
-            $password = $_POST["{$this->PREFIX}-password"];
-            $encrypted_blob = $_POST["{$this->PREFIX}-blob"];
-            // Validate blob.
-            $blob = $this->fromSecureBlob($encrypted_blob);
-            if ($blob == null || $blob["project_id"] != $project_id || $blob["survey_hash"] != $survey_hash) {
-                $response = array (
-                    "success" => false,
-                    "error" => $this->settings->failMsg
-                );
-            }
-            else {
-                // Blob was valid, try to authenticate.
-                $record = $record ?? $blob["record"];
-                $response = $this->authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance, $record);
-            }
-        }
-
-        $logo = "";
-
-        // Success? If not, then authentication needs to be performed.
-        if ($response["success"] !== true) {
-
-            // Inject JavaScript and HTML.
-            $js = file_get_contents(__DIR__ . "/js/surveyauth.js");
-            $orig_query_params = explode("?", $_SERVER["REQUEST_URI"], 2)[1] ?? "";
-            $orig_query_params = strlen($orig_query_params) ? "?$orig_query_params" : "";
-            $queryUrl = APP_PATH_SURVEY_FULL . $orig_query_params;
-            $blob = $this->toSecureBlob(array(
-                "project_id" => $project_id,
-                "survey_hash" => $survey_hash,
-                "instrument" => $instrument,
-                "event_id" => $event_id,
-                "repeat_instance" => $repeat_instance,
-                "record" => $record,
-                "random" => $this->genKey(16) // Add some random stuff.
-            ));
-            $response_hash = "";
-            if (!empty($response_id)) {
-                $response_hash = \Survey::encryptResponseHash($response_id, $participant_id);
-                $response_hash = "<input type=\"hidden\" name=\"__response_hash__\" value=\"{$response_hash}\">";
-            }
-            $record_id_field = \REDCap::getRecordIdField();
-            $record_id = $record == null ? "" : "<input type=\"hidden\" name=\"{$record_id_field}\" value=\"{$record}\">";
-            $isMobile = isset($GLOBALS["isMobileDevice"]) && $GLOBALS["isMobileDevice"];
-            if (is_numeric($GLOBALS["logo"])) {
-                //Set max-width for logo (include for mobile devices)
-                $logo_width = $isMobile ? '300' : '600';
-                // Get img dimensions (local file storage only)
-                $thisImgMaxWidth = $logo_width;
-                $styleDim = "max-width:{$thisImgMaxWidth}px;";
-                if (method_exists("\Files", "getImgWidthHeightByDocId")) {
-                    list ($thisImgWidth, $thisImgHeight) = \Files::getImgWidthHeightByDocId($GLOBALS["logo"]);
-                    if (is_numeric($thisImgHeight)) {
-                        $thisImgMaxHeight = round($thisImgMaxWidth / $thisImgWidth * $thisImgHeight);
-                        if ($thisImgWidth < $thisImgMaxWidth) {
-                            // Use native dimensions.
-                            $styleDim = "width:{$thisImgWidth}px;max-width:{$thisImgWidth}px;height:{$thisImgHeight}px;max-height:{$thisImgHeight}px;";
-                        } else {
-                            // Shrink size.
-                            $styleDim = "width:{$thisImgMaxWidth}px;max-width:{$thisImgMaxWidth}px;height:{$thisImgMaxHeight}px;max-height:{$thisImgMaxHeight}px;";
-                        }
-                    }
-                }
-                if (method_exists("\Files", "docIdHash")) {
-                    $logo = "<div style=\"padding:10px 0 0;\"><img id=\"survey_logo\" onload=\"try{reloadSpeakIconsForLogo()}catch(e){}\" " .
-                        "src=\"".APP_PATH_SURVEY."index.php?pid={$project_id}&doc_id_hash=".\Files::docIdHash($GLOBALS["logo"]) .
-                        "&__passthru=".urlencode("DataEntry/image_view.php")."&s={$GLOBALS["hash"]}&id={$GLOBALS["logo"]}\" alt=\"" . 
-                        js_escape($GLOBALS["lang"]["survey_1140"])."\" title=\"".js_escape($GLOBALS["lang"]["survey_1140"]) .
-                        "\" style=\"max-width:{$logo_width}px;$styleDim\"></div>";
-                }
-            }
-            $mobile = $isMobile ? "_mobile" : "";
-            $template = file_get_contents(__DIR__ . "/html/ui{$mobile}.html");
-            $replace = array(
-                "{JS}" => $js,
-                "{LOGO}" => $logo,
-                "{PREFIX}" => $this->PREFIX,
-                "{QUERYURL}" => $queryUrl,
-                "{SURVEYTITLE}" => $GLOBALS["title"],
-                "{INSTRUCTIONS}" => $this->settings->text,
-                "{USERNAMELABEL}" => $this->settings->usernameLabel,
-                "{PASSWORDLABEL}" => $this->settings->passwordLabel,
-                "{SUBMITLABEL}" => $this->settings->submitLabel,
-                "{FAILMSG}" => $response["error"],
-                "{ERROR}" => strlen($response["error"]) ? "block" : "none",
-                "{BLOB}" => $blob,
-                "{RECORDID}" => $record_id,
-                "{RESPONSEHASH}" => $response_hash,
-            );
-            print str_replace(array_keys($replace), array_values($replace), $template);
-            // No further processing (i.e. do not let REDCap render the survey page).
-            $this->exitAfterHook();
-        }
-        else {
-            // Success == true means that authentication has succeded.
-            // When a forward url is define, then forward
-            if (isset($response["targetUrl"])) {
-                $template = file_get_contents(__DIR__ . "/html/forward.html");
-                $replace = array(
-                    "{LOGO}" => $logo,
-                    "{PREFIX}" => $this->PREFIX,
-                    "{SURVEYTITLE}" => $GLOBALS["title"],
-                    "{SUCCESSMSG}" => $this->settings->successMsg,
-                    "{CONTINUELABEL}" => $this->settings->continueLabel,
-                    "{TARGETURL}" => $response["targetUrl"],
-                );
-                print str_replace(array_keys($replace), array_values($replace), $template);
-                // No further processing (i.e. do not let REDCap render the survey page).
-                $this->exitAfterHook();
-            }
-            // Otherwise, there is nothing to do. We let the user continue to the survey.
-        }
-    }
-
     #endregion
 
     #region Helpers
@@ -680,13 +524,14 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     #region Authentication
 
     function authenticatePublicDashboardOrReport($username, $password, $project_id, $log_title) {
+        if (!is_string($username) || !is_string($password)) return ["success" => false, "error" => $this->settings->failMsg];
         $result = array (
             "success" => false,
             "error" => null,
             "log_error" => [],
         );
         $ip = $_SERVER["REMOTE_ADDR"];
-        if (strlen($_SERVER["HTTP_X_FORWARDED_FOR"])) $ip .= $_SERVER["HTTP_X_FORWARDED_FOR"];
+
         try {
             do {
                 // Check lockout status.
@@ -698,7 +543,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 }
                 // Check credentials.
                 // First, let's see if the whitelist is active.
-                if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist)) {
+                if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist, true)) {
                     break;
                 }
                 // Check custom credentials if enabled.
@@ -750,6 +595,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      * Determines, whether the credentials are valid.
      */
     function authenticate($username, $password, $project_id, $instrument, $event_id, $repeat_instance, $record) {
+        if (!is_string($username) || !is_string($password)) return ["success" => false, "error" => $this->settings->failMsg];
         $result = array (
             "success" => false,
             "username" => $username,
@@ -759,7 +605,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             "log_error" => array()
         );
         $ip = $_SERVER["REMOTE_ADDR"];
-        if (strlen($_SERVER["HTTP_X_FORWARDED_FOR"])) $ip .= $_SERVER["HTTP_X_FORWARDED_FOR"];
+
 
         try {
             do {
@@ -772,7 +618,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 }
                 // Check credentials.
                 // First, let's see if the whitelist is active.
-                if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist)) {
+                if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist, true)) {
                     break;
                 }
                 // Check custom credentials if enabled.
@@ -805,6 +651,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
                 $taggedFields = $this->getTaggedFields($dd, $project_id, $record, $event_id, $instrument, $repeat_instance);
                 if (!count($taggedFields)) {
+                    $result["success"] = false;
+                    $result["error"] = $this->settings->errorMsg;
                     $result["log_error"][] = "Could not find a field tagged with the @" . self::$ACTIONTAG . " action tag.";
                 }
                 else {
@@ -812,7 +660,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     $tf = $taggedFields[0];
                     $record_created = false;
                     // Anything to do?
-                    if ($this->settings->canwrite && count($tf->map)) {
+                    if ($this->settings->canwrite && (count($tf->map) || $tf->successField !== null)) {
                         // If this is a nonpublic survey, $record will be set so. Otherwise, we have to get it after saving
                         $new_record = $record == null;
                         if ($new_record) {
@@ -821,7 +669,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                         }
                         $result["timestamp"] = date($tf->dateFormat);
                         $data_values = array();
-                        if (strlen($tf->successField)) $data_values[$tf->successField] = $tf->successValue;
+                        if ($tf->successField !== null) $data_values[$tf->successField] = $tf->successValue;
                         // Add mapped data items.
                         foreach ($tf->map as $k => $v) {
                             if (strlen($tf->map[$k])) $data_values[$v] = $result[$k];
@@ -884,11 +732,11 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                             false,             // bypassEconsentProtection
                             null               // loggingUser
                         );
-                        if (isset($response["error"])) {
+                        if (!is_array($response) || !empty($response["errors"]) || ($new_record && !isset($response["ids"][$record]))) {
                             if ($new_record) $record = null;
                             $result["success"] = false;
                             $result["error"] = $this->settings->errorMsg;
-                            $result["log_error"][] = "Failed to create a new record: " . $response["error"];
+                            $result["log_error"][] = "Authentication metadata could not be saved.";
                             break;
                         }
                         else {
@@ -908,8 +756,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                         $link = \REDCap::getSurveyLink($record, $instrument, $event_id, $repeat_instance, $project_id, $record_created);
                         $survey_hash = explode("?s=", $link, 2)[1];
                     }
-                    $at = $this->toSecureBlob("%%".$survey_hash);
-                    $result["targetUrl"] = $link . "&__at=" . $this->base64_url_encode($at);
+                    $result["targetUrl"] = $link;
                     $result["record"] = $record;
                 }
             } while (false);
@@ -942,7 +789,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     private function authenticateTable($username, $password, &$result) {
         try {
-            if (\Authentication::verifyTableUsernamePassword($username, $password)) {
+            $account = \User::getUserInfo($username);
+            if ($account && empty($account['user_suspended_time']) && \Authentication::verifyTableUsernamePassword($username, $password)) {
                 $result["success"] = true;
                 $result["method"] = "Table";
                 try {
@@ -962,7 +810,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     private function authenticateCustom($username, $password, &$result) {
         $username = strtolower($username);
-        if (isset($this->settings->customCredentials[$username]) && $this->settings->customCredentials[$username] == $password) {
+        if (isset($this->settings->customCredentials[$username]) && is_string($password) && hash_equals((string)$this->settings->customCredentials[$username], $password)) {
             $result["success"] = true;
             $result["method"] = "Custom";
         }

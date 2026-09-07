@@ -30,8 +30,10 @@ class SurveyAuthInfo
                 if (in_array($key, $this->ALLOWEDMAPPINGS, true)) {
                     switch($key) {
                         case "success": {
-                            $this->successField = $field_name;
-                            $this->successValue = $value;
+                            if (in_array($field_name, $valid_field_names, true)) {
+                                $this->successField = $field_name;
+                                $this->successValue = $value;
+                            }
                             break;
                         } 
                         default: {
