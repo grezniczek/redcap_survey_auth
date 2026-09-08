@@ -387,8 +387,45 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     private function get_endpoint() {
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]);
-        $endpoint = starts_with($GLOBALS["redcap_base_url"], $_SERVER["REQUEST_SCHEME"]."://".$_SERVER["HTTP_HOST"]) ? "internal" : "external";
+        $scheme = $_SERVER['REQUEST_SCHEME'] ?? ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
+        $request = $this->endpointUrlParts($scheme.'://'.($_SERVER['HTTP_HOST'] ?? '').($_SERVER['REQUEST_URI'] ?? '/'));
+        $bases = ['internal'=>$GLOBALS['redcap_base_url']];
+        if ($endpoint_options) $bases['external'] = $GLOBALS['redcap_survey_base_url'];
+        $endpoint = null;
+        $matchedLength = -1;
+        foreach ($bases as $name => $url) {
+            $base = $this->endpointUrlParts($url);
+            if (array_slice($request, 0, 3) !== array_slice($base, 0, 3)) continue;
+            // A directory boundary prevents /redcap-other from matching /redcap.
+            // Prefer the more specific base when one configured path contains the other.
+            if (($request[3] === $base[3] || str_starts_with($request[3], $base[3].'/')) && strlen($base[3]) > $matchedLength) {
+                $endpoint = $name;
+                $matchedLength = strlen($base[3]);
+            }
+        }
+        if ($endpoint === null) throw new \RuntimeException('Request does not match a configured REDCap endpoint.');
         return [$endpoint_options, $endpoint];
+    }
+
+    private function endpointUrlParts(string $url): array {
+        $parts = parse_url($url);
+        if (!$parts || empty($parts['host']) || !in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true)
+            || isset($parts['user']) || isset($parts['pass'])) {
+            throw new \RuntimeException('Invalid REDCap endpoint URL.');
+        }
+        $scheme = strtolower($parts['scheme']);
+        // Compare the routed path, without allowing encoded separators or dot segments
+        // to select a less specific endpoint. Query parameters do not identify endpoints.
+        $path = rawurldecode($parts['path'] ?? '/');
+        if (str_contains($path, '\\') || str_contains($path, "\0")) throw new \RuntimeException('Invalid endpoint path.');
+        $segments = [];
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.') continue;
+            if ($segment === '..') array_pop($segments);
+            else $segments[] = $segment;
+        }
+        return [$scheme, strtolower($parts['host']), $parts['port'] ?? ($scheme === 'https' ? 443 : 80),
+            count($segments) ? '/'.implode('/', $segments) : ''];
     }
 
     /**

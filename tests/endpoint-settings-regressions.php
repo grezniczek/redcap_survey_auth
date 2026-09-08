@@ -49,3 +49,46 @@ foreach(['dashboard'=>'dash','report'=>'report'] as $type=>$prefix) {
  }
 }
 echo "Passed dashboard/report endpoint render, save, and policy round trips.\n";
+
+// Classify each request by its complete configured origin and base directory.
+$cases = [
+ ['https://example.test/staff/', 'https://example.test/public/', 'example.test', '/staff/surveys/', 'https', 'internal'],
+ ['https://example.test/staff/', 'https://example.test/public/', 'example.test', '/public/surveys/?__dashboard=x', 'https', 'external'],
+ ['https://example.test/', 'https://example.test/public/', 'example.test', '/public/surveys/', 'https', 'external'],
+ ['https://example.test/staff/', 'https://example.test/', 'example.test', '/staff/surveys/', 'https', 'internal'],
+ ['https://example.test/', 'https://example.test/public/', 'example.test', '/publicity/surveys/', 'https', 'internal'],
+ ['https://EXAMPLE.test:443/staff/', 'https://example.test/public/', 'example.TEST', '/staff/surveys/', 'https', 'internal'],
+ ['https://example.test/', 'https://example.test:8443/', 'example.test:8443', '/surveys/', 'https', 'external'],
+ ['http://example.test/', 'https://example.test/', 'example.test', '/surveys/', 'https', 'external'],
+ ['http://example.test/', '', 'example.test:80', '/surveys/', 'http', 'internal'],
+ ['https://example.test/', 'https://example.test/public/', 'example.test', '/public', 'https', 'external'],
+ ['https://example.test/', 'https://example.test/public/', 'example.test', '/public%2Fsurveys/', 'https', 'external'],
+ ['https://example.test/', 'https://example.test/public/', 'example.test', '/staff/../public/surveys/', 'https', 'external'],
+ ['https://example.test/', 'https://example.test/public/', 'example.test', '/surveys/?next=/public/', 'https', 'internal'],
+];
+foreach ($cases as [$internal, $external, $host, $uri, $scheme, $expected]) {
+ $GLOBALS['redcap_base_url']=$internal; $GLOBALS['redcap_survey_base_url']=$external;
+ $_SERVER['HTTP_HOST']=$host; $_SERVER['REQUEST_URI']=$uri; $_SERVER['REQUEST_SCHEME']=$scheme;
+ check(callPrivate($module,'get_endpoint')[1]===$expected,'URL components select '.$expected.' for '.$host.$uri);
+ foreach (['dashboard'=>'dash', 'report'=>'report'] as $type=>$prefix) {
+  foreach (['internal','external','both'] as $selection) {
+   $module->saved=["surveyauth_{$prefix}_protected_2"=>'1', "surveyauth_{$prefix}_endpoint_2"=>$selection];
+   $policy=callPrivate($module,'loadPublicResourcePolicy',['project_id'=>1,'type'=>$type,'id'=>2]);
+   check((bool)$policy['protect']===($selection==='both' || $selection===$expected),"$type applies $selection protection on the matched endpoint");
+  }
+  $module->saved["surveyauth_{$prefix}_denyexternal_2"]='1';
+  $policy=callPrivate($module,'loadPublicResourcePolicy',['project_id'=>1,'type'=>$type,'id'=>2]);
+  check((bool)$policy['deny']===($external!=='' && $expected==='external'),"$type denies external access only on the configured external endpoint");
+ }
+}
+$GLOBALS['redcap_base_url']='https://example.test/staff/';
+$GLOBALS['redcap_survey_base_url']='https://example.test/public/';
+foreach ([['example.test','/staff-other/surveys/'], ['example.test','/unconfigured/'],
+ ['example','/staff/surveys/'], ['example.test.evil','/staff/surveys/'],
+ ['example.test:8443','/staff/surveys/']] as [$host,$uri]) {
+ $_SERVER['HTTP_HOST']=$host; $_SERVER['REQUEST_URI']=$uri; $_SERVER['REQUEST_SCHEME']='https';
+ $rejected=false;
+ try { callPrivate($module,'get_endpoint'); } catch (RuntimeException $e) { $rejected=true; }
+ check($rejected,'Unmatched endpoint cannot inherit a potentially unprotected policy');
+}
+echo "Passed endpoint path, origin, access-policy, and unmatched-request regressions.\n";
