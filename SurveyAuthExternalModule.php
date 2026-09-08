@@ -47,6 +47,11 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         //  - Denying access to public dashboards and reports when set to be blocked from the external survey endpoint
         //  - Display and evaluate the login dialog on protected dashboards and reports
 
+        if ($page === 'ProjectDashController:copy') {
+            $this->copyDashboardWithProtection($project_id);
+            return;
+        }
+
         // Save dashboard protection settings
         if ($page == "ProjectDashController:save") {
             $this->save_dashboard_settings(isset($_GET["dash_id"]) ? $_GET["dash_id"] : "", $_POST);
@@ -241,6 +246,57 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     private function protect_dashboard($project_id) {
         $this->protectPublicResource($project_id, 'dashboard');
+    }
+
+    private function copyDashboardWithProtection($projectId): void {
+        // This is a staff controller route: core has already checked its CSRF token.
+        if (!defined('USERID') || empty($GLOBALS['user_rights']['design']) ||
+            ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            http_response_code(403);
+            print '0';
+            $this->exitAfterHook();
+            return;
+        }
+        $sourceId = $_POST['dash_id'] ?? null;
+        if (!is_scalar($sourceId) || !ctype_digit((string)$sourceId) || (int)$sourceId < 1) {
+            http_response_code(400);
+            print '0';
+            $this->exitAfterHook();
+            return;
+        }
+        try {
+            $dashboards = new \ProjectDashboards();
+            $source = $dashboards->getDashboards($projectId, $sourceId);
+            if (empty($source)) throw new \RuntimeException('Dashboard not found in project.');
+            $settings = [];
+            foreach (['protected', 'endpoint', 'denyexternal'] as $key) {
+                $settings[$key] = $this->framework->getProjectSetting('surveyauth_dash_'.$key.'_'.$sourceId, $projectId);
+            }
+            // Core copyDash() commits its own transaction. Override only its source
+            // snapshot so it cannot expose a public copy before our settings exist.
+            $copier = new class extends \ProjectDashboards {
+                public function getDashboards($project_id, $dash_id=null) {
+                    $dash = parent::getDashboards($project_id, $dash_id);
+                    if (isset($dash['is_public'])) $dash['is_public'] = '0';
+                    return $dash;
+                }
+            };
+            $newId = $copier->copyDash($sourceId);
+            if (!$newId) throw new \RuntimeException('Dashboard copy failed.');
+            foreach ($settings as $key => $value) {
+                $this->framework->setProjectSetting('surveyauth_dash_'.$key.'_'.$newId, $value, $projectId);
+            }
+            // Match core's public-dashboard approval rules for a copied resource.
+            if ($source['is_public'] == '1' && (\UserRights::isSuperUserNotImpersonator() || $GLOBALS['project_dashboard_allow_public'] == '1')) {
+                $this->framework->query('UPDATE redcap_project_dashboards SET is_public=1 WHERE project_id=? AND dash_id=?', [$projectId, $newId]);
+            }
+            print json_encode_rc(['new_dash_id'=>$newId, 'html'=>$dashboards->renderDashboardList()]);
+        } catch (\Throwable $e) {
+            // Any copy already created stays private if copying protection failed.
+            http_response_code(503);
+            print '0';
+        }
+        $this->exitAfterHook();
     }
 
     private function add_dashboard_settings($project_id) {
