@@ -2,7 +2,7 @@
 
 A REDCap External Module that adds authentication to surveys, public dashboards, and public reports.
 
-See the [changelog](CHANGELOG.md) for information on release updates.
+See the [changelog](CHANGELOG.md) for information on release updates. Contributors can find the [implementation guide](docs/implementation.md) and [agent maintenance guide](docs/maintenance.md) in `docs/`.
 
 ## Purpose / Use Case
 
