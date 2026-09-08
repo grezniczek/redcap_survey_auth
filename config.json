@@ -93,18 +93,6 @@
             "repeatable": false
         },
         {
-            "key": "surveyauth_successmsg",
-            "name": "Success message (legacy setting; unused by the current immediate-redirect login flow)",
-            "type": "textarea",
-            "repeatable": false
-        },
-        {
-            "key": "surveyauth_continuelabel",
-            "name": "Continue label (legacy setting; unused by the current immediate-redirect login flow)",
-            "type": "text",
-            "repeatable": false
-        },
-        {
             "key": "surveyauth_methodinfo",
             "name": "Select the authentication method(s) to use. <i>Table</i> means the REDCap table-based authentication method, <i>LDAP</i> means the LDAP configured in REDCap, <i>Other LDAP</i> lets you specify custom LDAP settings, <i>Custom</i> lets you set a list of username/password pairs. When multiple methods are active at the same time, the order of processing is: Custom &gt; Table &gt; Other LDAP &gt; LDAP, stopping at the first success. When no authentication method is used, all logins will fail.",
             "type": "descriptive"

@@ -14,9 +14,7 @@ class SurveyAuthSettings {
     public $lockoutCount = 3;
     public $lockoutMsg;
     public $lockouttime;
-    public $successMsg;
     public $errorMsg;
-    public $continueLabel;
     public $blobSecret;
     public $blobHmac;
     public $isProject;
@@ -76,9 +74,7 @@ class SurveyAuthSettings {
                 $this->lockoutCount = $lockoutCount > 0 ? $lockoutCount : 3;
             }
             $this->lockoutMsg = $this->getValue("surveyauth_lockoutmsg", "Too many failed login attempts. Please try again later.");
-            $this->successMsg = $this->getValue("surveyauth_successmsg", "Authentication was successful. You will be automatically forwarded to the survey momentarily.");
             $this->errorMsg = $this->getValue("surveyauth_errormsg", "A technical error prevented completion of the authentication process. Please notify the system administrator.");
-            $this->continueLabel = $this->getValue("surveyauth_continuelabel", "Continue to Survey");
             $this->useTable = $this->getValue("surveyauth_usetable", false);
             $this->useLDAP = $this->getValue("surveyauth_useldap", false);
             $this->useOtherLDAP = $this->getValue("surveyauth_useotherldap", false);

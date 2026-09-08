@@ -62,8 +62,6 @@ This development checkout targets REDCap master and uses External Modules Framew
 
 - **Technical error message:** A message that is displayed to the user in case of a technical error that prevents completion of the authentication process. Defaults to 'A technical error prevented completion of the authentication process. Please notify the system administrator'.
 
-- **Success message** and **Continue label:** Legacy settings retained for existing configurations. The current login flow redirects immediately and does not display either value, regardless of Allow writing.
-
 - **Authentication methods:** Any of the following methods can be used for authentication. Authentication is attempted in this order: Custom > Table > Other LDAP > LDAP, stopping at the first successful method.
 
   - **Table:** REDCap verifies the username and password against its user table. Suspended accounts are denied.
@@ -151,3 +149,9 @@ Authorization is stored in the REDCap survey session for the browser making the 
 - Protection-setting changes invalidate existing authorization. Table-authenticated sessions also recheck account suspension and password changes. LDAP credentials are checked at login, not on each subsequent request.
 
 SurveyAuth gates access to survey file routes; REDCap retains responsibility for native file handling after authorization.
+
+## Retired settings
+
+The former **Success message** (`surveyauth_successmsg`) and **Continue label** (`surveyauth_continuelabel`) settings have been removed because successful login redirects immediately. Their saved values are deleted when the module is enabled or changed to this version in Control Center, including values retained in disabled projects. Project enable also cleans up values restored or imported later. Cleanup is safe to repeat.
+
+The earlier token-to-Allow writing migration is retained: a nonempty legacy token enables metadata writing only when Allow writing has no saved value. Explicit choices are preserved, and the legacy token is removed. Rolling back does not restore deleted custom messages or tokens.

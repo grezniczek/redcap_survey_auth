@@ -21,22 +21,32 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     #region Hooks
 
-    function redcap_module_system_change_version($version, $old_version) {
-        $new = explode(".", str_replace("v", "", $version), 2);
-        $new = ($new[0].".".str_replace(".", "", $new[1])) * 1;
-        $old = explode(".", str_replace("v", "", $old_version), 2);
-        $old = ($old[0].".".str_replace(".", "", $old[1])) * 1;
-        if ($old < 1.30) {
-            // Upgrade all projects with a token to canwrite and delete the token
-            $projects = $this->getProjectsWithModuleEnabled();
-            foreach ($projects as $pid) {
-                $token = $this->getProjectSetting("surveyauth_token", $pid);
-                if (!empty($token)) {
-                    $this->setProjectSetting("surveyauth_canwrite", true, $pid);
-                }
-                // Remove in any case
-                $this->removeProjectSetting("surveyauth_token", $pid);
-            }
+    function redcap_module_system_enable($version) {
+        // Include retained settings for disabled projects, not just enabled projects.
+        $keys = array_map(fn($key) => $this->framework->prefixSettingKey($key),
+            ['surveyauth_token', 'surveyauth_successmsg', 'surveyauth_continuelabel']);
+        $projects = $this->framework->query('SELECT DISTINCT s.project_id
+            FROM redcap_external_module_settings s
+            JOIN redcap_external_modules m ON m.external_module_id=s.external_module_id
+            WHERE m.directory_prefix=? AND s.project_id IS NOT NULL AND s.`key` IN (?, ?, ?)',
+            array_merge([$this->PREFIX], $keys));
+        while ($row = $projects->fetch_assoc()) $this->migrateProjectSettings($row['project_id']);
+    }
+
+    function redcap_module_project_enable($version, $project_id) {
+        // Also handle settings restored or imported after the system migration.
+        $this->migrateProjectSettings($project_id);
+    }
+
+    private function migrateProjectSettings($projectId): void {
+        // Preserve the pre-1.3 token migration, using stored state rather than versions.
+        // Never overwrite an explicitly configured Allow writing value.
+        $token = $this->framework->getProjectSetting('surveyauth_token', $projectId);
+        if (!empty($token) && $this->framework->getProjectSetting('surveyauth_canwrite', $projectId) === null) {
+            $this->framework->setProjectSetting('surveyauth_canwrite', true, $projectId);
+        }
+        foreach (['surveyauth_token', 'surveyauth_successmsg', 'surveyauth_continuelabel'] as $key) {
+            $this->framework->removeProjectSetting($key, $projectId);
         }
     }
 
