@@ -785,10 +785,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     //region LDAP
 
     private function ldapIdentity($ldap, $entry): array {
-        $attributes = @ldap_get_attributes($ldap, $entry);
+        // LDAP attribute descriptions are case-insensitive; servers may preserve
+        // schema casing (for example givenName) even when mappings use lowercase.
+        $attributes = array_change_key_case(@ldap_get_attributes($ldap, $entry) ?: [], CASE_LOWER);
         $data = array_fill_keys(['email', 'fullname', 'firstname', 'lastname'], '');
         foreach ($this->settings->ldapMappings as $key => $names) {
             foreach ($names as $name) {
+                $name = strtolower($name);
                 if (isset($attributes[$name]) && $attributes[$name]['count'] >= 1) {
                     $data[$key] = trim($attributes[$name][0]);
                     break;
@@ -825,7 +828,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             if (!$bound) throw new \RuntimeException('LDAP service bind failed.');
             $this->checkBaseDN($ldap, $config);
             $searchUsername = $username;
-            if (@ldap_get_option($ldap, LDAP_OPT_PROTOCOL_VERSION, $version) && $version == 3) $searchUsername = utf8_encode($username);
+            // Browser form values already use UTF-8, as required by LDAP v3.
             $filter = sprintf('(&(%s=%s)%s)', $config['userattr'], $this->quoteFilterString($searchUsername), $config['userfilter']);
             $base = $config['userdn'];
             if ($base !== '' && substr($base, -1) !== ',') $base .= ',';

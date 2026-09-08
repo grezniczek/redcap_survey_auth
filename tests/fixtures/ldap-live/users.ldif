@@ -1,0 +1,33 @@
+dn: dc=test
+objectClass: domain
+dc: test
+
+dn: uid=alice,dc=test
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Directory
+sn: Directory
+givenName: Alice
+mail: ALICE@example.test
+userPassword: fixture-password
+
+dn: uid=jörg,dc=test
+objectClass: inetOrgPerson
+uid: jörg
+cn: Jörg Directory
+sn: Directory
+givenName: Jörg
+mail: joerg@example.test
+userPassword: fixture-password
+
+dn: uid=star*user,dc=test
+objectClass: inetOrgPerson
+uid: star*user
+cn: Literal Star
+sn: Star
+userPassword: fixture-password
+
+dn: cn=allowed,dc=test
+objectClass: groupOfUniqueNames
+cn: allowed
+uniqueMember: uid=alice,dc=test
