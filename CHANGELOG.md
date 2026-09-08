@@ -4,6 +4,7 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
+v2.2.0  | Security update: Session-scoped survey/dashboard/report authorization replaces URL tokens and daily grants; credentials use a dedicated login endpoint. Corrected endpoint selection, dashboard-copy protection, authentication ordering, lockouts, identity writes, and survey audit details. See README for session lifetimes and configuration behavior.
 v2.1.1  | Bug fix: Dashboard protection and survey endpoint detection failed in some circumstances.
 v2.1.0  | New feature: Public Reports can be protected with a login. For instances with separate survey endpoint, additonal options are available.
 v2.0.0  | New feature: Public Dashboards can be protected with a login. For instances with separate survey endpoint, additonal options are available.
