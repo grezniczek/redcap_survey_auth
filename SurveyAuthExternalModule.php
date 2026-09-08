@@ -550,6 +550,10 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         // Write a log entry.
         if ($this->settings->log == "all" || ($this->settings->log == "fail" && !$result["success"]) || ($this->settings->log == "success" && $result["success"])) {
             $changes = $result["success"] ? "Successful authentication via {$result["method"]}" : "Failed or denied login attempt (IP: {$ip})";
+            // Quote submitted identifiers so control characters cannot forge log lines.
+            // A failed attempt identifies only the submitted username, not a verified user.
+            $changes .= "\nSubmitted username: ".json_encode($username, JSON_INVALID_UTF8_SUBSTITUTE);
+            $changes .= "\nSurvey: ".json_encode($instrument, JSON_INVALID_UTF8_SUBSTITUTE)."; instance: ".(int)$repeat_instance;
             if (count($result["log_error"])) {
                 $changes .= "\n" . join("\n", $result["log_error"]);
             }
@@ -558,8 +562,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 "changes_made" => $changes,
                 "sql" => null,
                 "record" => $record,
-                "event" => null,
-                "project_id" => $GLOBALS["project_id"]
+                "event" => $event_id,
+                "project_id" => $project_id
             );
             \REDCap::logEvent($logData["action_description"], $logData["changes_made"], $logData["sql"], $logData["record"], $logData["event"], $logData["project_id"]);
         }

@@ -43,7 +43,7 @@ REDCap 13.1.0 Standard / REDCap 13.1.5 LTS or newer.
   - _Successful attempts:_ Log entries will be produced for successful logins.
   - _All:_ Log entries will be produced for both types of events.
 
-- **Allow writing:** When this is enabled, the module can write data (as specified by the action tag parameters) to a (newly created) record before forwarding the user to the survey. Otherwise, no data is written to the record and the user is simply forwarded to the survey after successful authentiation. In any case, authentication is logged to the events table.
+- **Allow writing:** When this is enabled, the module can write data (as specified by the action tag parameters) to a (newly created) record before forwarding the user to the survey. Otherwise, no data is written to the record and the user is simply forwarded to the survey after successful authentiation. Authentication attempts are logged according to the Logging setting, independently of Allow writing. Survey authentication logs include the submitted username, survey, instance, and outcome.
 
 - **Text displayed above username/password fields:** Optionally enter some prompt that is displayed to the survey user.
 
