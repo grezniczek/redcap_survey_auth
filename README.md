@@ -155,3 +155,7 @@ SurveyAuth gates access to survey file routes; REDCap retains responsibility for
 The former **Success message** (`surveyauth_successmsg`) and **Continue label** (`surveyauth_continuelabel`) settings have been removed because successful login redirects immediately. Their saved values are deleted when the module is enabled or changed to this version in Control Center, including values retained in disabled projects. Project enable also cleans up values restored or imported later. Cleanup is safe to repeat.
 
 The earlier token-to-Allow writing migration is retained: a nonempty legacy token enables metadata writing only when Allow writing has no saved value. Explicit choices are preserved, and the legacy token is removed. Rolling back does not restore deleted custom messages or tokens.
+
+## Acknowledgements
+
+OpenAI Codex assisted with code review, implementation, regression and integration testing, and documentation, in collaboration with the module's maintainer.
