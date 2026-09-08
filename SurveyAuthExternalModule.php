@@ -863,6 +863,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     private function checkLockoutStatus($ip) {
         if ($this->settings->lockouttime <= 0 || !$this->settings->lockoutCount) return 0;
+        $this->refreshLockoutStatus();
         $status = $this->settings->lockoutStatus[$ip] ?? null;
         if (!$status || time() >= $status["ts"] + $this->settings->lockouttime * 60) return 0;
         // Checking a blocked request must not increment failures or extend expiry.
@@ -874,20 +875,54 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     private function updateLockoutStatus($ip) {
         if ($this->settings->lockouttime <= 0 || !$this->settings->lockoutCount) return;
-        $this->settings->lockoutStatus[$ip] = [
-            "n" => $this->checkLockoutStatus($ip) + 1,
-            "ts" => time()
-        ];
-        $this->setSystemSetting("surveyauth_lockouts", json_encode($this->settings->lockoutStatus));
+        $this->mutateLockoutStatus(function () use ($ip) {
+            $this->settings->lockoutStatus[$ip] = [
+                'n' => $this->checkLockoutStatus($ip) + 1,
+                'ts' => time()
+            ];
+            return true;
+        });
     }
 
-    /**
-     * Helper function which clears the lockout status for an IP address.
-     */
     private function clearLockoutStatus($ip) {
-        if (isset($this->settings->lockoutStatus[$ip])) {
+        $this->mutateLockoutStatus(function () use ($ip) {
+            if (!isset($this->settings->lockoutStatus[$ip])) return false;
             unset($this->settings->lockoutStatus[$ip]);
-            $this->setSystemSetting("surveyauth_lockouts", json_encode($this->settings->lockoutStatus));
+            return true;
+        });
+    }
+
+    private function lockoutQuery(string $sql, array $params = []) {
+        // Advisory locks and their protected reads must use the primary connection.
+        // Framework query() does not expose REDCap's primary-connection flag.
+        $result = \db_query($sql, $params, null, MYSQLI_STORE_RESULT, true);
+        if ($result === false) throw new \RuntimeException('Could not access lockout storage.');
+        return $result;
+    }
+
+    private function refreshLockoutStatus(): void {
+        $q = $this->lockoutQuery('SELECT s.value FROM redcap_external_module_settings s
+            JOIN redcap_external_modules m ON m.external_module_id=s.external_module_id
+            WHERE m.directory_prefix=? AND s.project_id IS NULL AND s.`key`=?',
+            [$this->PREFIX, $this->framework->prefixSettingKey('surveyauth_lockouts')]);
+        $row = db_fetch_assoc($q);
+        if ($row && db_fetch_assoc($q)) throw new \RuntimeException('Duplicate lockout settings.');
+        $status = !$row || $row['value'] === '' ? [] : json_decode($row['value'], true, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($status)) throw new \RuntimeException('Invalid lockout storage.');
+        $this->settings->lockoutStatus = $status;
+    }
+
+    private function mutateLockoutStatus(callable $change): void {
+        $suffix = ':'.$this->PREFIX.':lockouts';
+        $q = $this->lockoutQuery('SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ?), 256), 5) AS acquired', [$suffix]);
+        if ((int)(db_fetch_assoc($q)['acquired'] ?? 0) !== 1) {
+            throw new \RuntimeException('Lockout storage is busy. Please try again.');
+        }
+        try {
+            $this->refreshLockoutStatus();
+            if ($change()) $this->framework->setSystemSetting('surveyauth_lockouts', json_encode($this->settings->lockoutStatus, JSON_THROW_ON_ERROR));
+        } finally {
+            $this->lockoutQuery('SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ?), 256))', [$suffix]);
         }
     }
 

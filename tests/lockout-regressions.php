@@ -7,7 +7,22 @@ namespace {
 require __DIR__.'/session-regressions.php';
 $module=new class extends \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule {
     public $writes=[];
+    public $PREFIX='fixture';
     public function setSystemSetting($key,$value) { $this->writes[]=[$key,$value]; }
+};
+if (!defined('MYSQLI_STORE_RESULT')) define('MYSQLI_STORE_RESULT', 0);
+function db_query($sql,$params=[],$connection=null,$mode=null,$primary=false) {
+    global $settings;
+    check($primary,'Lockout queries must use the primary connection');
+    if (str_contains($sql,'GET_LOCK')) return new ArrayIterator([['acquired'=>1]]);
+    if (str_contains($sql,'RELEASE_LOCK')) return new ArrayIterator([]);
+    return new ArrayIterator([['value'=>json_encode($settings->lockoutStatus)]]);
+}
+$module->PREFIX='fixture';
+$module->framework=new class($module) {
+    public function __construct(private $module) {}
+    public function prefixSettingKey($key) { return $key; }
+    public function setSystemSetting($key,$value) { $this->module->setSystemSetting($key,$value); }
 };
 $settings=(new ReflectionClass(\DE\RUB\SurveyAuthExternalModule\SurveyAuthSettings::class))->newInstanceWithoutConstructor();
 $settings->lockouttime=5;
