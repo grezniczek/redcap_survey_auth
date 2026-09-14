@@ -24,7 +24,7 @@ This development checkout targets REDCap master and uses External Modules Framew
 
 ## Installation
 
-Participant login requires JavaScript and uses the EM Framework’s survey AJAX endpoint. It works when the survey host blocks direct `/external_modules/` access.
+Participant login requires JavaScript and uses the EM Framework’s AJAX route under `/surveys/`. Direct `/external_modules/` access is not required on the survey host; the framework’s survey AJAX route must be available.
 
 - Clone this repo into `<redcap-root>/modules/redcap_survey_auth_v<version-number>`, or
 - Obtain this module from the Consortium REDCap Repo via the Control Center.
@@ -125,14 +125,14 @@ The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note tha
 
 ## Public Dashboards and Reports
 
-When editing an existing Project Dashboard or Report that is publicly accessible, additional protection options are shown:
-
-- The option to protect a dashboard or report with a login screen (_Dashboard/Report is protected by Survey Auth_).  
+Survey Auth options appear in a separate blue panel when editing an existing public Project Dashboard or an existing Report. Report protection applies when the report is public. Enable the protection switch to require login.
 
 In REDCap installations that use a separate endpoint for surveys, additional options are available:
 
 - The option to require login for both endpoints or only for the (external) survey endpoint or the (internal) REDCap endpoint.
 - The option to deny access to public dashboards/reports when accessed via the (external) survey endpoint. The message that is displayed in such a case can be set in the module's project level configuration.
+
+The copy icon beside each endpoint option copies that endpoint’s public report/dashboard link, including its configured base path. The button briefly turns green after a successful copy. Copying a link does not change protection settings or share authorization.
 
 ![Protection of Public Dashboards](images/public-dashboard-protection.png)
 
@@ -144,7 +144,7 @@ Dashboard copies inherit the source dashboard's SurveyAuth settings. Copies rema
 
 Authorization is stored in the REDCap survey session for the browser making the request. Sharing a survey, dashboard, or report URL does not share authorization. Old URL authentication tokens and calendar-day dashboard/report session flags are no longer accepted.
 
-- Multiple login tabs can authenticate independently without refreshing after another tab opens. Completing a survey with final Submit makes REDCap destroy the shared survey session, so other tabs must sign in again; unsaved answers are not automatically restored.
+- Use one active survey tab at a time. Multiple login tabs can authenticate independently without refreshing after another tab opens. Completing a survey with final Submit makes REDCap destroy the shared survey session, so other tabs must sign in again; unsaved answers are not automatically restored.
 - Login forms expire after 10 minutes. Reopen the resource to obtain a fresh form.
 - Authorization expires after 30 minutes without authorized activity or 8 hours after login, whichever comes first. REDCap session expiry or loss of the session cookie can end access earlier.
 - With **Allow writing** enabled, **Start over** restores the exact authentication values originally written by the module (including the original timestamp), while leaving survey answers cleared. Sessions created before this feature ask for login again before resetting.
