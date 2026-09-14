@@ -164,11 +164,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]) ? "true" : "false";
         $this->initializeJavascriptModuleObject();
         $jsmo = $this->framework->getJavascriptModuleObjectName();
+        $this->renderPublicResourceSettingsStyle();
         // Inject Javascript
         ?>
         <script>
             $(function() {
-                const $container = $('<div id="survey_auth_container"></div>').appendTo($('#public_link_div').parent());
+                const $row = $('<div class="survey-auth-settings-row"></div>').appendTo($('#public_link_div').parent());
+                const $container = $('<div id="survey_auth_container"></div>').appendTo($row);
                 $('<div></div>')
                 .addClass("custom-control custom-switch mt-2")
                 .append("<input class='custom-control-input' name='survey_auth_protected' id='survey_auth_protected' <?=$protect?> type='checkbox'>")
@@ -332,10 +334,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]) ? "true" : "false";
         // Inject Javascript
         // This will render the input elements that allow setting the protection status for public dashboards only
+        $this->renderPublicResourceSettingsStyle();
         ?>
         <script>
             $(function() {
-                const $container = $('#public_link_div').parent();
+                const $row = $('<div class="survey-auth-settings-row"></div>').appendTo($('#public_link_div').parent());
+                const $container = $('<div id="survey_auth_container"></div>').appendTo($row);
                 $('<div></div>')
                 .addClass("custom-control custom-switch mt-2")
                 .append("<input class='custom-control-input' name='survey_auth_protected' id='survey_auth_protected' <?=$protect?> type='checkbox'>")
@@ -399,6 +403,29 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     #endregion
 
     #region Helpers
+
+    private function renderPublicResourceSettingsStyle(): void {
+        ?>
+        <style>
+            .survey-auth-settings-row {
+                display: block;
+                float: none;
+                clear: both;
+                width: 100%;
+            }
+            #survey_auth_container {
+                display: inline-block;
+                float: none;
+                box-sizing: border-box;
+                margin: 10px 0;
+                border: 1px gray dotted;
+                padding: 5px 10px;
+                width: 100%;
+                background-color: aliceblue;
+            }
+        </style>
+        <?php
+    }
 
     /**
      * A helper function that returns an array indicating whether there are endpoint options and the currently used endpoint.
