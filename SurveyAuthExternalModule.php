@@ -554,29 +554,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $ip = $_SERVER["REMOTE_ADDR"];
 
         try {
-            do {
-                // Check lockout status.
-                $lockoutCount = $this->checkLockoutStatus($ip);
-                if ($this->settings->lockoutCount && $lockoutCount > $this->settings->lockoutCount - 1) {
-                    $result["error"] = $this->settings->lockoutMsg;
-                    $result["lockout"] = $this->settings->lockouttime * 60 * 1000;
-                    break;
-                }
-                // Check credentials.
-                // First, let's see if the whitelist is active.
-                if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist, true)) {
-                    break;
-                }
-                $this->authenticateBackends($username, $password, $result);
-                if (!$result["success"]) {
-                    $result["error"] = count($result["log_error"]) ? $this->settings->errorMsg : $this->settings->failMsg;
-                    // Update lockout status.
-                    $this->updateLockoutStatus($ip);
-                    break;
-                }
-                // Login was successful.
-                $this->clearLockoutStatus($ip);
-            } while (false);
+            $this->authenticateWithLockout($username, $password, $result);
         }
         catch (\Exception $e) {
             $result["success"] = false;
@@ -612,31 +590,11 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
 
         try {
-            do {
-                // Check lockout status.
-                $lockoutCount = $this->checkLockoutStatus($ip);
-                if ($this->settings->lockoutCount && $lockoutCount > $this->settings->lockoutCount - 1) {
-                    $result["error"] = $this->settings->lockoutMsg;
-                    $result["lockout"] = $this->settings->lockouttime * 60 * 1000;
-                    break;
-                }
-                // Check credentials.
-                // First, let's see if the whitelist is active.
-                if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist, true)) {
-                    break;
-                }
-                $this->authenticateBackends($username, $password, $result);
-                if (!$result["success"]) {
-                    $result["error"] = count($result["log_error"]) ? $this->settings->errorMsg : $this->settings->failMsg;
-                    // Update lockout status.
-                    $this->updateLockoutStatus($ip);
-                    break;
-                }
-                // Login was successful.
-                $this->clearLockoutStatus($ip);
+            $this->authenticateWithLockout($username, $password, $result);
+            if ($result['success']) {
                 $result = $this->completeSurveyAuthentication($result, $project_id, $instrument, $event_id, $repeat_instance, $record, $writeAuthenticationData);
                 $record = $result['record'] ?? $record;
-            } while (false);
+            }
         }
         catch (\Exception $e) {
             $result["success"] = false;
@@ -797,6 +755,39 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         return $response;
     }
 
+    private function authenticateWithLockout(string $username, string $password, array &$result): void {
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $lock = null;
+        // Serialize admission, verification and bookkeeping for this IP across
+        // projects/sessions. The short storage lock is never held during LDAP.
+        if ($this->settings->lockouttime > 0) {
+            $lock = ':'.$this->PREFIX.':authentication:'.$ip;
+            $q = $this->lockoutQuery('SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ?), 256), 5) AS acquired', [$lock]);
+            if ((int)(db_fetch_assoc($q)['acquired'] ?? 0) !== 1) {
+                throw new \RuntimeException('Authentication is busy. Please try again.');
+            }
+        }
+        try {
+            if ($this->settings->lockoutCount && $this->checkLockoutStatus($ip) >= $this->settings->lockoutCount) {
+                $result['error'] = $this->settings->lockoutMsg;
+                $result['lockout'] = $this->settings->lockouttime * 60 * 1000;
+                return;
+            }
+            if ($this->settings->useWhitelist && !in_array(strtolower($username), $this->settings->whitelist, true)) {
+                return;
+            }
+            $this->authenticateBackends($username, $password, $result);
+            if ($result['success']) {
+                $this->clearLockoutStatus($ip);
+            } else {
+                $result['error'] = count($result['log_error']) ? $this->settings->errorMsg : $this->settings->failMsg;
+                $this->updateLockoutStatus($ip);
+            }
+        } finally {
+            if ($lock !== null) $this->lockoutQuery('SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ?), 256))', [$lock]);
+        }
+    }
+
     private function authenticateBackends($username, $password, array &$result): void {
         // Match the order presented in module settings and documentation.
         foreach (['Custom', 'Table', 'OtherLDAP', 'LDAP'] as $backend) {
@@ -911,9 +902,15 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         try {
             $ldap = ldap_connect($config['url'], $config['port']);
             if ($ldap === false) throw new \RuntimeException('Failed to connect to LDAP server.');
-            if (is_numeric($config['version']) && $config['version'] > 2) {
-                @ldap_set_option($ldap, LDAP_OPT_PROTOCOL_VERSION, $config['version']);
-                if ($config['start_tls'] && !@ldap_start_tls($ldap)) throw new \RuntimeException('Could not start TLS session.');
+            if (!in_array($config['version'], [2, 3, '2', '3'], true) || !is_bool($config['start_tls']) ||
+                ($config['start_tls'] && (int)$config['version'] !== 3)) {
+                throw new \RuntimeException('Invalid LDAP protocol/TLS configuration.');
+            }
+            if (!@ldap_set_option($ldap, LDAP_OPT_PROTOCOL_VERSION, (int)$config['version'])) {
+                throw new \RuntimeException('Could not set LDAP protocol version.');
+            }
+            if ($config['start_tls'] && !@ldap_start_tls($ldap)) {
+                throw new \RuntimeException('Could not start TLS session.');
             }
             if (is_bool($config['referrals']) && !@ldap_set_option($ldap, LDAP_OPT_REFERRALS, $config['referrals'])) {
                 throw new \RuntimeException('Could not change LDAP referral options.');
@@ -1002,7 +999,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             "url" => "",
             "host" => 'localhost',
             "port" => '389',
-            "version" => 2,
+            "version" => 3,
             "referrals" => true,
             "binddn" => "",
             "bindpw" => "",

@@ -10,14 +10,16 @@ define('APP_PATH_WEBTOOLS',__DIR__.'/fixtures/');
 define('LDAP_OPT_PROTOCOL_VERSION',17); define('LDAP_OPT_REFERRALS',8);
 class FakeLDAP {
     public static $servers=[], $redcapConfigs=[], $calls=[], $results=[], $closed=[];
-    public static $tableSuccess=false;
-    public static function reset() { self::$calls=self::$results=self::$closed=[]; }
+    public static $tableSuccess=false, $transport=[], $optionSuccess=true, $tlsSuccess=true;
+    public static function reset() { self::$calls=self::$results=self::$closed=self::$transport=[]; }
     public static function result($entries) { $r=(object)['entries'=>$entries,'freed'=>false];self::$results[]=$r;return $r; }
 }
 function ldap_connect($url,$port) { FakeLDAP::$calls[]=$url;return (object)['url'=>$url]; }
-function ldap_set_option(...$args) { return true; }
+function ldap_set_option($ldap,$option,$value) { FakeLDAP::$transport[]=['option',$option,$value]; return FakeLDAP::$optionSuccess; }
+function ldap_start_tls($ldap) { FakeLDAP::$transport[]=['tls'];return FakeLDAP::$tlsSuccess; }
 function ldap_get_option($ldap,$option,&$value) { $value=2; return true; }
 function ldap_bind($ldap,$dn=null,$password=null) {
+    FakeLDAP::$transport[]=['bind'];
     if ($dn===null) return true;
     return $password==='correct' && in_array($dn,FakeLDAP::$servers[$ldap->url]['accept']??[],true);
 }
@@ -90,5 +92,23 @@ $settings->fallbackToTableUserInfo=false;
 $r=['success'=>true,'email'=>'stale','fullname'=>'stale','log_error'=>[]];FakeLDAP::reset();
 (new ReflectionMethod($module,'doLDAPauth'))->invokeArgs($module,['user','',config('multi'),&$r]);
 check(!$r['success'] && $r['email']===null && $r['fullname']===null && !FakeLDAP::$calls,'Empty passwords cannot bind anonymously or preserve prior success');
+// Requested encryption must be negotiated before either service or user bind.
+foreach ([[], ['version'=>3], ['version'=>'3']] as $version) {
+    FakeLDAP::reset();$r=['success'=>false,'log_error'=>[]];
+    $cfg=array_replace(config('good'),['start_tls'=>true],$version);
+    (new ReflectionMethod($module,'doLDAPauth'))->invokeArgs($module,['user','correct',$cfg,&$r]);
+    check($r['success'],'Valid StartTLS configuration authenticates, including an omitted protocol version');
+    check(FakeLDAP::$transport[0]===['option',LDAP_OPT_PROTOCOL_VERSION,3] && FakeLDAP::$transport[1]===['tls'] && FakeLDAP::$transport[2]===['option',LDAP_OPT_REFERRALS,true],
+        'Protocol 3 and TLS precede binds');
+}
+foreach ([['version'=>2], ['version'=>'invalid'], ['start_tls'=>'false'], ['version'=>3,'option_failure'=>true], ['version'=>3,'tls_failure'=>true]] as $changes) {
+    FakeLDAP::reset();$r=['success'=>false,'log_error'=>[]];
+    FakeLDAP::$optionSuccess=empty($changes['option_failure']);FakeLDAP::$tlsSuccess=empty($changes['tls_failure']);
+    $cfg=array_replace(config('good'),['start_tls'=>true],$changes);
+    (new ReflectionMethod($module,'doLDAPauth'))->invokeArgs($module,['user','correct',$cfg,&$r]);
+    check(!$r['success'] && !empty($r['log_error']) && !in_array(['bind'],FakeLDAP::$transport,true),
+        'Invalid protocol, TLS configuration, option failure or failed TLS never sends bind credentials');
+}
+FakeLDAP::$optionSuccess=FakeLDAP::$tlsSuccess=true;
 echo "Passed backend precedence, LDAP isolation, group denial, and handle-lifetime regressions.\n";
 }

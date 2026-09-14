@@ -5,6 +5,8 @@ trait SurveySessionAuth
 {
     private $authorizedSurveyRequest;
     private const SESSION_KEY = 'redcap_survey_auth_v2';
+    // Invalidate grants and login contexts issued before these security rules.
+    private const POLICY_VERSION = 1;
     private const LOGIN_TTL = 600;
     private const IDLE_TTL = 1800;
     private const ABSOLUTE_TTL = 28800;
@@ -107,7 +109,7 @@ trait SurveySessionAuth
         // Failure counters change on every failed login and are not policy.
         unset($policy['lockoutStatus'], $policy['blobSecret'], $policy['blobHmac']);
         $dictionary = \REDCap::getDataDictionary($scope['project_id'], 'json', true, null, $scope['form_name'], false);
-        return hash('sha256', json_encode($policy).$dictionary);
+        return hash('sha256', self::POLICY_VERSION.':'.json_encode($policy).$dictionary);
     }
 
     private function surveyPath(string $url): string
@@ -242,9 +244,10 @@ trait SurveySessionAuth
                     unset($state['grants'][$returnKey]);
                 }
             }
-            $restartRequiresLogin = isset($_GET['__startover']) && $this->settings->canwrite && $grant &&
-                !array_key_exists('authentication_values', $grant);
-            if ($grant && !$restartRequiresLogin && hash_equals($grant['revision'], $revision) && $this->surveyIdentityActive($grant)) {
+            $metadataRequiresLogin = $this->settings->canwrite && $grant &&
+                !is_array($grant['authentication_values'] ?? null) && ($grant['purpose'] ?? '') !== 'return';
+            if ($grant && !$metadataRequiresLogin && hash_equals($grant['revision'], $revision) && $this->surveyIdentityActive($grant)) {
+                $this->protectAuthenticationFields($grant);
                 $state['grants'][$key]['last'] = time();
                 if ($returnCode && $scope['hash'] !== $source['hash']) {
                     // Re-enter core with the participant that owns this code. Core's
@@ -267,7 +270,7 @@ trait SurveySessionAuth
             while (count($state['logins']) > 16) array_shift($state['logins']);
             if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 http_response_code(403);
-                $this->renderSurveyLogin($id, $restartRequiresLogin
+                $this->renderSurveyLogin($id, $metadataRequiresLogin && isset($_GET['__startover'])
                     ? 'Sign in again before starting over so authentication values can be restored. Then choose Start over again.'
                     : 'Your submission was not saved. Sign in to reopen the survey. Unsaved answers are not restored automatically; use your browser Back button to recover them if available. Uploaded files may need to be selected again.');
             } else {
@@ -448,6 +451,7 @@ trait SurveySessionAuth
             $state['logins'][$id]['csrf'] = bin2hex(random_bytes(32));
             return ['success'=>false, 'error'=>$result['error'] ?: $this->settings->failMsg, 'csrf'=>$state['logins'][$id]['csrf']];
         }
+        $this->rotateSurveySession();
         unset($state['logins'][$id]);
         $scope['record'] = $result['record'] === null ? null : (string)$result['record'];
         $grant = ['username' => $username, 'method' => $result['method'], 'revision' => $login['revision'],
@@ -468,6 +472,39 @@ trait SurveySessionAuth
         if (!empty($login['return'])) $destination .= '&__return=1';
         if (!empty($login['new'])) $destination .= '&new';
         return ['success'=>true, 'redirect'=>$destination];
+    }
+
+    private function rotateSurveySession(): void
+    {
+        $previous = session_id();
+        if (session_status() !== PHP_SESSION_ACTIVE || $previous === '' ||
+            !session_regenerate_id(true) || session_id() === $previous) {
+            throw new \RuntimeException('Could not renew the survey session.');
+        }
+    }
+
+    private function protectAuthenticationFields(array $grant): void
+    {
+        if (!$this->settings->canwrite) return;
+        $fields = $grant['authentication_values'] ?? [];
+        // These values are already persisted at login. Do not re-inject them:
+        // core would reinterpret date formats and checkbox values as form input.
+        // Strip both native form names and prefill/alternate field encodings.
+        foreach (['_POST', '_GET', '_FILES'] as $source) {
+            foreach (array_keys($GLOBALS[$source] ?? []) as $key) {
+                if ($source === '_GET' && in_array($key,
+                    ['s', 'hash', 'page', 'event_id', 'pid', 'pnid', 'preview', 'id', 'sq', 'instance'], true)) continue;
+                $field = preg_replace('/^__chk(?:n)?__/', '', (string)$key);
+                $field = explode('_RC_', $field, 2)[0];
+                $field = explode('___', $field, 2)[0];
+                if (array_key_exists($field, $fields)) unset($GLOBALS[$source][$key]);
+            }
+        }
+        // Core expands this list into blank field values during required checks.
+        if (is_array($_POST['empty-required-field'] ?? null)) {
+            $_POST['empty-required-field'] = array_values(array_filter($_POST['empty-required-field'],
+                static fn($field) => is_string($field) && !array_key_exists($field, $fields)));
+        }
     }
 
     private function restoreAuthenticationAfterStartOver($projectId, $record, $instrument, $eventId,

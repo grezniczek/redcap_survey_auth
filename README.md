@@ -36,7 +36,7 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
 ### System-Level Settings
 
-- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism. The project-level Lockout count determines the threshold (default: 3). Failed-attempt counts are shared by client IP across projects using this module. Attempts made while locked out do not extend the deadline; successful authentication clears that IP's failed-attempt count.
+- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism. The project-level Lockout count determines the threshold (default: 3). Failed-attempt counts are shared by client IP across projects using this module. Attempts made while locked out do not extend the deadline; successful authentication clears that IP's failed-attempt count. When lockout time is positive, password checks are serialized per IP across projects and sessions so concurrent attempts cannot exceed the configured threshold. A request that cannot obtain the per-IP lock within five seconds fails without checking its password.
 
 ### Project-Level Settings
 
@@ -92,7 +92,7 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
     ]
     ```
 
-    This example uses LDAP v3 with StartTLS; the server must support it and PHP must trust its certificate.
+    This example uses LDAP v3 with StartTLS; the server must support it and PHP must trust its certificate. LDAP v3 is also the default when `version` is omitted. If `start_tls` is true, an incompatible protocol setting or failed TLS negotiation rejects authentication before any bind credentials are sent. Use JSON booleans for `start_tls`.
 
   - **LDAP Attribute mappings:** When LDAP is enabled, custom attribute mappings for email, first, last, and full name can be set. These will be used when attempting to get email and full name of an authenticated user.
 
@@ -116,7 +116,7 @@ To enable authentication for a survey, the **@SURVEY-AUTH** action tag must be u
 
 When _username_, _email_, _fullname_, or _timestamp_ are defined, the corresponding data will be inserted into the specified fields when Allow writing is enabled (timestamp format will match the datetime format of the target field; time-only fields are not supported; the default date format is YMD).
 
-When a value for _success_ is defined, the field with the action tag will be set to this value when Allow writing is enabled; no additional mapping is required. If used, the field should likely be set to @READONLY/@READONLY-SURVEY or @HIDDEN-SURVEY.
+When a value for _success_ is defined, the field with the action tag will be set to this value when Allow writing is enabled; no additional mapping is required. Use @READONLY/@READONLY-SURVEY or @HIDDEN-SURVEY to keep participants from editing the displayed authentication fields. With Allow writing enabled, the module also discards survey-request edits to the authentication fields it populated, including attempts to blank them. This preserves the values already saved at login; ordinary survey answers and staff data-entry edits are unaffected.
 
 ### Combining **@SURVEY-AUTH** with **@IF**
 
@@ -142,7 +142,7 @@ Dashboard copies inherit the source dashboard's SurveyAuth settings. Copies rema
 
 ## Authentication sessions
 
-Authorization is stored in the REDCap survey session for the browser making the request. Sharing a survey, dashboard, or report URL does not share authorization. Old URL authentication tokens and calendar-day dashboard/report session flags are no longer accepted.
+Authorization is stored in the REDCap survey session for the browser making the request. Successful login rotates the session identifier and invalidates the previous identifier while retaining needed session data. This security update invalidates earlier grants and login forms: participants must reopen the resource and sign in again. Sharing a survey, dashboard, or report URL does not share authorization. Old URL authentication tokens and calendar-day dashboard/report session flags are no longer accepted.
 
 - Use one active survey tab at a time. Multiple login tabs can authenticate independently without refreshing after another tab opens. Completing a survey with final Submit makes REDCap destroy the shared survey session, so other tabs must sign in again; unsaved answers are not automatically restored.
 - Login forms expire after 10 minutes. Reopen the resource to obtain a fresh form.

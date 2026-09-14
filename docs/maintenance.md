@@ -14,12 +14,12 @@ Read the [implementation guide](implementation.md) and relevant source before ch
 1. Authorization must precede survey writes and completion side effects. The save/completion hooks manage already-authorized state; they cannot substitute for the early gate.
 2. Resolve response/resource identity using trusted core context and stored records. Navigation parameters alone must not confer authorization or expand its scope.
 3. Keep credentials on the dedicated login endpoint. Preserve framework and session CSRF checks, session-name verification, current-policy validation, and same-origin redirects.
-4. Keep grants scoped and expiring. Changes to return, repeat, completion or file routes must not authorize unrelated responses, tabs, resources or endpoints.
+4. Rotate the native session ID before issuing an authenticated grant, reject rotation failure and invalidate obsolete policy revisions. Keep grants scoped and expiring. Changes to return, repeat, completion or file routes must not authorize unrelated responses, tabs, resources or endpoints.
 5. Block expired submissions explicitly. Do not add automatic answer/upload replay without discussing its scope and establishing isolation, bounded storage and single-use processing.
 6. Let REDCap own native file handling after authorization. Avoid duplicating its storage and ownership policies in the module.
 7. Preserve dashboard-copy publication ordering and core permissions. Verify core behavior again when its copy controller or transaction handling changes.
 8. Publish identity attributes only from an accepted backend. Preserve exact credential checks, Table-account revalidation, LDAP encoding/casing and backend order.
-9. Treat lockout mutations as one synchronized operation. Do not replace primary reads with replica reads or use client-supplied forwarded chains as counter keys.
+9. Serialize authentication admission and bookkeeping per IP. Keep the separate installation-wide counter lock short and out of backend calls. Treat lockout mutations as one synchronized operation. Do not replace primary reads with replica reads or use client-supplied forwarded chains as counter keys.
 10. Keep migrations repeatable and state-based, including disabled projects and retries after partial completion. Preserve explicit settings choices; document destructive cleanup and rollback effects.
 
 ## Standalone regression suite
@@ -42,16 +42,16 @@ These suites do not need a REDCap bootstrap, database, credentials or web server
 | Area changed | Relevant suites in `tests/` |
 | --- | --- |
 | Action tags and selector routing | `security-regressions.php` |
-| Survey scopes, return and completion | `session-regressions.php` |
+| Survey scopes, return and completion | `session-regressions.php`, `session-rotation-regressions.php` |
 | File-route authorization boundary | `file-scope-regressions.php` |
 | Dashboard/report grant lifecycle | `public-resource-regressions.php` |
 | Endpoint configuration and classification | `endpoint-settings-regressions.php` |
 | Dashboard copying and publication | `dashboard-copy-regressions.php` |
 | Login rendering, AJAX and redirects | `login-branding-regressions.php`, `login-ajax-regressions.php`, `login-tab-csrf-regressions.php`, `login-javascript-regressions.js` |
 | Authentication event contents and modes | `authentication-logging-regressions.php` |
-| Metadata saves, Start over and repeat structures | `metadata-write-regressions.php`, `start-over-regressions.php` |
+| Metadata saves, Start over and repeat structures | `metadata-write-regressions.php`, `metadata-integrity-regressions.php`, `start-over-regressions.php` |
 | Table login and grant revocation | `table-account-regressions.php` |
-| Lockout expiry and synchronization | `lockout-regressions.php`, `lockout-storage-regressions.php` |
+| Lockout expiry and synchronization | `lockout-regressions.php`, `lockout-storage-regressions.php`, `lockout-concurrency-regressions.php` |
 | LDAP dispatch and result isolation | `ldap-regressions.php` |
 | Retired settings and migration retries | `settings-migration-regressions.php` |
 

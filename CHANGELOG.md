@@ -4,6 +4,7 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
+Unreleased | Enforce requested LDAP TLS before binding; protect authentication metadata from survey edits; rotate session IDs at login and invalidate older authorization; serialize password checks per IP to enforce concurrent lockout thresholds.
 Unreleased | Allow multiple login tabs to retain valid, session-bound framework CSRF tokens. Document that core survey completion destroys the shared survey session and requires other tabs to reauthenticate.
 Unreleased | Restore the original authentication field values after an authorized Start over when Allow writing is enabled, including repeating response scopes.
 Unreleased | Login now uses JSMO.ajax through the survey endpoint, supporting survey hosts that block direct external-module pages. Login requires JavaScript; failed attempts update the form and successful attempts redirect.

@@ -35,7 +35,7 @@ trait PublicResourceAuth
         $policy = get_object_vars($this->settings);
         unset($policy['lockoutStatus'], $policy['blobSecret'], $policy['blobHmac']);
         return ['deny'=>$deny, 'protect'=>$protect, 'message'=>$this->settings->{$prefix.'noaccessmsg'},
-            'revision'=>hash('sha256', json_encode($policy))];
+            'revision'=>hash('sha256', self::POLICY_VERSION.':'.json_encode($policy))];
     }
 
     private function protectPublicResource($projectId, string $type): void
@@ -91,6 +91,7 @@ trait PublicResourceAuth
             $state['logins'][$id]['csrf'] = bin2hex(random_bytes(32));
             return ['success'=>false, 'error'=>$result['error'] ?: $this->settings->failMsg, 'csrf'=>$state['logins'][$id]['csrf']];
         }
+        $this->rotateSurveySession();
         unset($state['logins'][$id]);
         $grant = ['username'=>$username, 'method'=>$result['method'], 'revision'=>$policy['revision'],
             'issued'=>time(), 'last'=>time(), 'expires'=>time()+self::ABSOLUTE_TTL];

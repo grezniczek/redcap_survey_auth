@@ -13,13 +13,17 @@ $base=['url'=>'ldap://127.0.0.1:1389','port'=>1389,'version'=>3,'start_tls'=>tru
  'userfilter'=>'(objectClass=inetOrgPerson)','attributes'=>[]];
 $failures=0;
 function check($ok,$label){global $failures;echo ($ok?'PASS ':'FAIL ').$label."\n";if(!$ok)$failures++;}
-function attempt($user,$password='fixture-password',$changes=[]){
+function attempt($user,$password='fixture-password',$changes=[],$omitVersion=false){
  global $module,$base;
  $result=['success'=>false,'log_error'=>[]];
- (new ReflectionMethod($module,'doLDAPauth'))->invokeArgs($module,[$user,$password,array_replace($base,$changes),&$result]);
+ $config=array_replace($base,$changes);
+ if($omitVersion)unset($config['version']);
+ (new ReflectionMethod($module,'doLDAPauth'))->invokeArgs($module,[$user,$password,$config,&$result]);
  return $result;
 }
 $r=attempt('alice');check($r['success'] && $r['email']==='alice@example.test','StartTLS login and email mapping');
+check(attempt('alice','fixture-password',[],true)['success'],'Omitted protocol version defaults to LDAP v3 with StartTLS');
+check(!attempt('alice','fixture-password',['version'=>2])['success'],'StartTLS with explicit LDAP v2 fails closed');
 check($r['fullname']==='Alice Directory','LDAP attribute names match case-insensitively');
 check(!attempt('alice','wrong')['success'],'Incorrect password denied');
 check(!attempt('alice','')['success'],'Empty password denied');
