@@ -73,29 +73,23 @@ trait PublicResourceAuth
         }
     }
 
-    private function publicResourceLogin(string $id, array $login): void
+    private function publicResourceLogin(string $id, array $login, $username, $password): array
     {
         $state =& $this->surveySession();
         $stored = $login['resource'];
         $resource = $this->publicResource($stored['project_id'], $stored['type'], $stored['hash']);
         $policy = $this->loadPublicResourcePolicy($resource);
-        $username = $_POST['username'] ?? null;
-        $password = $_POST['password'] ?? null;
-        unset($_POST['username'], $_POST['password']);
         if ($this->publicResourceKey($stored) !== $this->publicResourceKey($resource) || $policy['deny'] ||
             !$policy['protect'] || !hash_equals($login['revision'], $policy['revision']) ||
             !is_string($username) || !is_string($password)) {
-            http_response_code(403);
-            print 'Login expired or invalid. Please reopen the resource.';
-            return;
+            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the resource.'];
         }
         $result = $this->authenticatePublicDashboardOrReport($username, $password, $resource['project_id'],
             'Public '.ucfirst($resource['type']).' '.$resource['id']);
         unset($password);
         if (!$result['success']) {
             $state['logins'][$id]['csrf'] = bin2hex(random_bytes(32));
-            $this->renderSurveyLogin($id, $result['error'] ?: $this->settings->failMsg);
-            return;
+            return ['success'=>false, 'error'=>$result['error'] ?: $this->settings->failMsg, 'csrf'=>$state['logins'][$id]['csrf']];
         }
         unset($state['logins'][$id]);
         $grant = ['username'=>$username, 'method'=>$result['method'], 'revision'=>$policy['revision'],
@@ -104,6 +98,6 @@ trait PublicResourceAuth
         $state['grants'][$this->publicResourceKey($resource)] = $grant;
         while (count($state['grants']) > 32) array_shift($state['grants']);
         $destination = $this->surveyPath(APP_PATH_SURVEY_FULL).'?__'.$resource['type'].'='.rawurlencode($resource['hash']);
-        header('Location: '.$destination, true, 303);
+        return ['success'=>true, 'redirect'=>$destination];
     }
 }

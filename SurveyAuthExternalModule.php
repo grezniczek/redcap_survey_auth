@@ -52,6 +52,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     function redcap_every_page_before_render($project_id) {
         $page = defined("PAGE") ? PAGE : "";
+        // The framework validates this module's registered AJAX action before dispatch.
+        if ($page === 'surveys/index.php' && ($_GET['__passthru'] ?? null) === 'ExternalModules' &&
+            ($_GET['prefix'] ?? null) === $this->PREFIX && ($_GET['ajax'] ?? null) === '1') return;
         // This hook handles several things:
         //  - Saving dashboard and report protection settings
         //  - Denying access to public dashboards and reports when set to be blocked from the external survey endpoint
@@ -119,6 +122,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id) {
+        if ($action === 'survey-login') return $this->surveyLoginAjax($payload, $project_id);
         // Report settings are handled by AJAX requests
         if ($action == "save-report-settings") return $this->save_report_settings($project_id, $payload);
     }

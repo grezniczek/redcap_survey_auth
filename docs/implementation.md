@@ -13,8 +13,8 @@ Survey Auth decides whether a browser session may access a configured survey, pu
 | [PublicResourceAuth.php](../classes/PublicResourceAuth.php) | Dashboard/report identity, endpoint policy, scoped authorization and login completion |
 | [SurveyAuthSettings.php](../classes/SurveyAuthSettings.php) | Configuration defaults and normalized authentication settings |
 | [SurveyAuthInfo.php](../classes/SurveyAuthInfo.php) | Action-tag parameters and metadata mappings |
-| [survey-login.php](../survey-login.php) | Dedicated EM credential endpoint and outer error boundary |
-| [session-login.php](../html/session-login.php) | Shared native HTML login form |
+| [survey-login.php](../survey-login.php) | Compatibility endpoint for previously opened native login forms |
+| [session-login.php](../html/session-login.php), [survey-login.js](../js/survey-login.js) | Shared AJAX login form, errors and redirect |
 | [config.json](../config.json) | Framework version, endpoint registration, configuration UI and action tag |
 
 ## Request and login flow
@@ -36,9 +36,9 @@ Explicit access denial and invalid or ambiguous contexts stop the request rather
 
 `redcap_every_page_before_render` checks authorization before ordinary survey submission processing. It also handles public-resource requests and supported direct file routes. Its name alone is not evidence of its position relative to core writes: that ordering is an integration dependency.
 
-Core page-view logging precedes the early hook. The login form therefore submits credentials to the EM Framework's dedicated `no-auth-pages` endpoint, not to survey processing. The endpoint validates both framework CSRF protection and the module's session-bound login context/CSRF value. Its project must match the context. It re-resolves resource identity and policy before issuing a grant.
+Core page-view logging precedes the early hook. The login form uses `JSMO.ajax('survey-login', payload)` through the framework's `surveys/?__passthru=ExternalModules` endpoint, which core excludes from page-view POST logging. The module's early gate lets its own framework AJAX requests reach framework dispatch; ordinary survey processing and other modules' requests retain their existing authorization checks. The framework validates CSRF, encrypted request context and the registered no-auth action before calling the module. The module additionally validates its session-bound login context/CSRF and matching project, then re-resolves resource identity and policy before issuing a grant. Errors return as data; failed credentials rotate session CSRF for the next attempt. Success returns a same-origin redirect. Neither core nor web-server configuration changes are required.
 
-Login uses the participant's REDCap survey session. Session initialization checks the expected session name; it does not transfer a staff session into a participant session. Redirects use validated paths on the participant's current origin. The form uses native HTML submission, including when JavaScript is unavailable.
+Login uses the participant's REDCap survey session. Session initialization checks the expected session name; it does not transfer a staff session into a participant session. Redirects use validated paths on the participant's current origin. Login requires JavaScript. Inputs have no native submission names, and the submit button stays disabled until initialization, so a failed script cannot submit credentials through ordinary survey processing. A no-JavaScript notice explains how to continue. Passwords are serialized once and cleared from the object retained by the framework AJAX queue, whose transport-error logging may otherwise expose payload properties. Opening another page can rotate the framework CSRF cookie; a rejected stale login form must be reopened.
 
 ## Session state and identity
 

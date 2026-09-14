@@ -19,16 +19,19 @@ button { margin-top: 1.5rem; padding: .7rem 1.5rem; font: inherit; cursor: point
 <h1><?= $escape($loginHeading) ?></h1>
 <?php endif; ?>
 <div><?= $instructions ?></div>
-<?php if ($error !== ''): ?><p role="alert"><?= $error ?></p><?php endif; ?>
-<form method="post" action="<?= $action ?>">
-<input type="hidden" name="context" value="<?= $escape($id) ?>">
-<input type="hidden" name="csrf" value="<?= $csrf ?>">
-<input type="hidden" name="redcap_csrf_token" value="<?= $frameworkCsrf ?>">
+<p id="survey-auth-error" role="alert"><?= $error ?></p>
+<noscript><p>JavaScript is required to sign in. Please enable JavaScript and reopen this page.</p></noscript>
+<form id="survey-auth-login" data-context="<?= $escape($id) ?>" data-csrf="<?= $csrf ?>" onsubmit="return false">
 <label for="username"><?= $usernameLabel ?></label>
-<input id="username" name="username" autocomplete="username" required autofocus>
+<input id="username" autocomplete="username" required autofocus>
 <label for="password"><?= $passwordLabel ?></label>
-<input id="password" name="password" type="password" autocomplete="current-password" required>
-<button type="submit"><?= $submitLabel ?></button>
+<input id="password" type="password" autocomplete="current-password" required>
+<button type="submit" disabled><?= $submitLabel ?></button>
 </form>
 </main>
+<?= $moduleJavascript ?>
+<script>
+<?php require __DIR__.'/../js/survey-login.js'; ?>
+initializeSurveyAuthLogin(document.getElementById('survey-auth-login'), <?= $jsObject ?>);
+</script>
 </html>

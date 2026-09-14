@@ -24,6 +24,8 @@ This development checkout targets REDCap master and uses External Modules Framew
 
 ## Installation
 
+Participant login requires JavaScript and uses the EM Framework’s survey AJAX endpoint. It works when the survey host blocks direct `/external_modules/` access.
+
 - Clone this repo into `<redcap-root>/modules/redcap_survey_auth_v<version-number>`, or
 - Obtain this module from the Consortium REDCap Repo via the Control Center.
 - Go to Control Center > Technical / Developer Tools > External Modules and enable REDCap Survey Auth.

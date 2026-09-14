@@ -3,10 +3,10 @@
 ob_start();
 require __DIR__.'/session-regressions.php';
 $fixture = new class extends SurveyAuthQueryFixture {
-    public function getUrl($path, $noAuth) { return '/external_modules/?page=survey-login&pid=1'; }
+    public function initializeJavascriptModuleObject() { echo '<script>window.testSurveyAuthModule = {};</script>'; }
+    public function getJavascriptModuleObjectName() { return 'window.testSurveyAuthModule'; }
 };
 $module->framework = $fixture;
-$_COOKIE['redcap_external_module_csrf_token'] = str_repeat('a', 80);
 $_SESSION['redcap_survey_auth_v2']['logins']['branding'] = [
     'scope' => $scope, 'csrf' => 'test-csrf', 'expires' => time()+600,
 ];
@@ -21,9 +21,19 @@ function renderBranding($branding) {
     callPrivate($module, 'renderSurveyLogin', 'branding', '<unsafe-error>');
     return ob_get_clean();
 }
+function checkLoginForm($html) {
+    check(str_contains($html, 'data-context="branding"') && str_contains($html, 'data-csrf="test-csrf"'),
+        'AJAX form retains its session context and independent CSRF');
+    check(str_contains($html, 'initializeSurveyAuthLogin(document.getElementById(') &&
+        str_contains($html, 'window.testSurveyAuthModule'), 'Form uses the initialized framework JSMO');
+    check(!preg_match('/<input[^>]+name=/', $html), 'Credentials cannot fall back to ordinary form submission');
+    check(str_contains($html, '<noscript>') && str_contains($html, 'type="submit" disabled'),
+        'Login stays disabled until JavaScript initializes');
+}
 REDCap::$testFile = ['text/html', 'untrusted-name.html', base64_decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')];
 $html = renderBranding(['title'=>'<b>A & B</b>', 'hide_title'=>0, 'doc_id'=>42]);
+checkLoginForm($html);
 check(str_contains($html, '<h1>A &amp; B</h1>'), 'Survey title is plain, escaped text');
 check(str_contains($html, 'src="data:image/png;base64,'), 'Logo type comes from image bytes, not stored MIME');
 check(str_contains($html, '&lt;unsafe-error&gt;'), 'Failed login error remains escaped');
@@ -35,5 +45,9 @@ check(REDCap::$fileReads === [42], 'No file read when the logo join rejects it')
 REDCap::$testFile = ['image/png', 'logo.png', '<svg onload="alert(1)"></svg>'];
 $html = renderBranding(['title'=>'Survey', 'hide_title'=>0, 'doc_id'=>43]);
 check(!str_contains($html, 'class="survey-logo"'), 'Non-raster content cannot become a login logo');
+$_SESSION['redcap_survey_auth_v2']['logins']['branding']['resource'] = ['type'=>'dashboard', 'title'=>'Dashboard', 'hash'=>'dashboard-hash'];
+checkLoginForm(renderBranding([]));
+$_SESSION['redcap_survey_auth_v2']['logins']['branding']['resource']['type'] = 'report';
+checkLoginForm(renderBranding([]));
 echo "Passed login branding and escaping regressions.\n";
 ob_end_flush();

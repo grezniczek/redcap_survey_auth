@@ -121,11 +121,6 @@ trait SurveySessionAuth
         return $path.(isset($parts['query']) ? '?'.$parts['query'] : '');
     }
 
-    private function surveyLoginUrl(): string
-    {
-        return $this->surveyPath($this->framework->getUrl('survey-login.php', true));
-    }
-
     private function surveyStop(string $message, int $status = 403, ?string $continueUrl = null): void
     {
         http_response_code($status);
@@ -331,13 +326,6 @@ trait SurveySessionAuth
                 $logoSource = 'data:'.$image['mime'].';base64,'.base64_encode($file[2]);
             }
         }
-        $action = $escape($this->surveyLoginUrl());
-        // Keep the framework's CSRF protection, in addition to session-bound CSRF.
-        // Reuse a valid framework cookie so opening another login tab does not
-        // invalidate the first tab's double-submit token. Session CSRF is separate.
-        $cookie = $_COOKIE['redcap_external_module_csrf_token'] ?? '';
-        $frameworkCsrf = $escape(is_string($cookie) && preg_match('/\A[a-f0-9]{80}\z/', $cookie)
-            ? $cookie : $this->framework->getCSRFToken());
         $csrf = $escape($login['csrf']);
         $instructions = $this->settings->text;
         $usernameLabel = $escape($this->settings->usernameLabel);
@@ -346,44 +334,76 @@ trait SurveySessionAuth
         $error = $escape($error);
         header('Cache-Control: no-store');
         header('Referrer-Policy: no-referrer');
+        ob_start();
+        try {
+            $this->framework->initializeJavascriptModuleObject();
+            $moduleJavascript = ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+        $jsObject = $this->framework->getJavascriptModuleObjectName();
         require __DIR__.'/../html/session-login.php';
     }
 
+    private function surveyLoginAjax($payload, $project_id): array
+    {
+        header('Cache-Control: no-store');
+        if (!is_array($payload) || $project_id === null ||
+            (string)$project_id !== (string)$this->framework->getProjectId()) {
+            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the resource.'];
+        }
+        try {
+            return $this->processSurveyLogin($payload);
+        } catch (\Throwable $e) {
+            // Do not expose backend exceptions (or their credential arguments) to AJAX logs.
+            return ['success'=>false, 'error'=>'Login could not be completed. Please contact the administrator.'];
+        }
+    }
+
+    // Compatibility for forms opened before the switch to the survey AJAX endpoint.
     public function surveyLogin(): void
+    {
+        $payload = $_POST;
+        unset($_POST['username'], $_POST['password']);
+        $result = $this->processSurveyLogin($payload);
+        if ($result['success']) {
+            header('Location: '.$result['redirect'], true, 303);
+        } elseif (isset($result['csrf'])) {
+            $this->renderSurveyLogin($payload['context'], $result['error']);
+        } else {
+            http_response_code(403);
+            print htmlspecialchars($result['error'], ENT_QUOTES, 'UTF-8');
+        }
+    }
+
+    private function processSurveyLogin(array $payload): array
     {
         header('Cache-Control: no-store');
         header('Referrer-Policy: no-referrer');
         if (!$this->surveySessionReady()) {
-            http_response_code(403);
-            print 'A survey session is required. Please enable cookies.';
-            return;
+            return ['success'=>false, 'error'=>'A survey session is required. Please enable cookies.'];
         }
-        $id = $_POST['context'] ?? '';
-        $csrf = $_POST['csrf'] ?? '';
+        $id = $payload['context'] ?? '';
+        $csrf = $payload['csrf'] ?? '';
         $state =& $this->surveySession();
         $login = is_string($id) ? ($state['logins'][$id] ?? null) : null;
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$login || !is_string($csrf) ||
             !hash_equals($login['csrf'], $csrf) || (string)$login['scope']['project_id'] !== (string)$this->framework->getProjectId()) {
-            http_response_code(403);
-            print 'Login expired or invalid. Please reopen the survey.';
-            return;
+            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the survey.'];
         }
         if (isset($login['resource'])) {
-            $this->publicResourceLogin($id, $login);
-            return;
+            return $this->publicResourceLogin($id, $login, $payload['username'] ?? null, $payload['password'] ?? null);
         }
         $scope = $login['scope'];
         $this->settings = new SurveyAuthSettings($this, $scope['project_id']);
-        $username = $_POST['username'] ?? null;
-        $password = $_POST['password'] ?? null;
-        unset($_POST['username'], $_POST['password']);
+        $username = $payload['username'] ?? null;
+        $password = $payload['password'] ?? null;
+        unset($payload['username'], $payload['password']);
         $currentScope = $this->surveyScope($scope['project_id'], $scope['hash'], $scope['response_id']);
         if (!is_string($username) || !is_string($password) ||
             $this->surveyScopeKey($currentScope, $id) !== $this->surveyScopeKey($scope, $id) ||
             !hash_equals($login['revision'], $this->surveyPolicyRevision($scope))) {
-            http_response_code(403);
-            print 'Login expired or invalid. Please reopen the survey.';
-            return;
+            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the survey.'];
         }
         if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
         $result = $this->authenticate($username, $password, $scope['project_id'], $scope['form_name'], $scope['event_id'], $scope['instance'], $scope['record'], ($login['purpose'] ?? 'survey') !== 'return');
@@ -391,8 +411,7 @@ trait SurveySessionAuth
         if (!$result['success']) {
             // Refresh session CSRF after each credential attempt.
             $state['logins'][$id]['csrf'] = bin2hex(random_bytes(32));
-            $this->renderSurveyLogin($id, $result['error'] ?: $this->settings->failMsg);
-            return;
+            return ['success'=>false, 'error'=>$result['error'] ?: $this->settings->failMsg, 'csrf'=>$state['logins'][$id]['csrf']];
         }
         unset($state['logins'][$id]);
         $scope['record'] = $result['record'] === null ? null : (string)$result['record'];
@@ -412,7 +431,7 @@ trait SurveySessionAuth
         if ($returnOnly) $destination = $login['destination'];
         if (!empty($login['return'])) $destination .= '&__return=1';
         if (!empty($login['new'])) $destination .= '&new';
-        header('Location: '.$destination, true, 303);
+        return ['success'=>true, 'redirect'=>$destination];
     }
 
     public function redcap_save_record($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1)

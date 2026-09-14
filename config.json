@@ -4,6 +4,7 @@
     "description": "Adds authentication to surveys, public dashboards, and public reports. <strong><a href=\"https://github.com/grezniczek/redcap_survey_auth\">See full documentation here</a></strong>.",
     "framework-version": 12,
     "no-auth-pages": ["survey-login"],
+    "no-auth-ajax-actions": ["survey-login"],
     "authors": [
         {
             "name": "Günther Rezniczek",

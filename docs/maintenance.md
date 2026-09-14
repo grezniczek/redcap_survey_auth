@@ -34,6 +34,7 @@ for test in tests/*regressions.php; do
         *) php "$test" ;;
     esac
 done
+node tests/login-javascript-regressions.js
 ```
 
 These suites do not need a REDCap bootstrap, database, credentials or web server. The maintained suites cover:
@@ -46,7 +47,7 @@ These suites do not need a REDCap bootstrap, database, credentials or web server
 | Dashboard/report grant lifecycle | `public-resource-regressions.php` |
 | Endpoint configuration and classification | `endpoint-settings-regressions.php` |
 | Dashboard copying and publication | `dashboard-copy-regressions.php` |
-| Login rendering and branding | `login-branding-regressions.php` |
+| Login rendering, AJAX and redirects | `login-branding-regressions.php`, `login-ajax-regressions.php`, `login-javascript-regressions.js` |
 | Authentication event contents and modes | `authentication-logging-regressions.php` |
 | Metadata saves and repeat structures | `metadata-write-regressions.php` |
 | Table login and grant revocation | `table-account-regressions.php` |
@@ -89,7 +90,7 @@ Choose live checks according to the change:
 | Dashboard/report login and copying | Both configured origins apply the intended policy; a fresh browser requires its own login; copied dashboards inherit settings before publication |
 | Files | Protected routes require authorization; authorized requests retain REDCap's expected native behavior |
 | Credential handling | Synthetic password markers stay out of authentication/page-view logs and redirects; invalid CSRF/context submissions are rejected |
-| UI | Keyboard, native submission, mobile layout and password-manager entry work; HTTP checks alone do not establish interactive usability |
+| UI | Keyboard, AJAX submission, mobile layout, password-manager entry and the no-JavaScript notice work; HTTP checks alone do not establish interactive usability |
 | Settings migration | System/project enable clean retired values, including disabled-project data; repeat runs and explicit writing choices behave correctly |
 
 For same-host path layouts and reverse proxies, test the actual configured routing and scheme/host handling. Do not equate fixture URL classification with deployed proxy verification. Do not assume login helpers reproduce every policy in REDCap's staff login flow.
