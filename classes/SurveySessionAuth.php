@@ -161,6 +161,16 @@ trait SurveySessionAuth
                     throw new \RuntimeException('Mismatched response.');
                 }
             }
+            $startOver = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_GET['__startover'], $_POST['__response_hash__']);
+            if ($startOver) {
+                if ($returnCode || !is_string($_POST['__response_hash__']) || $_POST['__response_hash__'] === '' ||
+                    $scope['record'] === null || !$scope['response_id'] || isset($_POST['submit-action']) || !empty($_FILES)) {
+                    $this->surveyStop('Invalid Start over request.', 400);
+                    return;
+                }
+                // Core accepts a posted ID here; bind it to the validated response hash.
+                $_POST['__response_id__'] = $scope['response_id'];
+            }
             $this->settings = new SurveyAuthSettings($this, $projectId);
             $dictionary = json_decode(\REDCap::getDataDictionary($projectId, 'json', true, null, $scope['form_name'], false));
             if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
@@ -226,12 +236,15 @@ trait SurveySessionAuth
                     }
                     $grant = $entryGrant;
                     unset($grant['purpose'], $grant['identity']);
+                    $grant['authentication_values'] = $result['authentication_values'] ?? [];
                     $grant['expires'] = $grant['issued'] + self::ABSOLUTE_TTL;
                     $state['grants'][$key] = $grant;
                     unset($state['grants'][$returnKey]);
                 }
             }
-            if ($grant && hash_equals($grant['revision'], $revision) && $this->surveyIdentityActive($grant)) {
+            $restartRequiresLogin = isset($_GET['__startover']) && $this->settings->canwrite && $grant &&
+                !array_key_exists('authentication_values', $grant);
+            if ($grant && !$restartRequiresLogin && hash_equals($grant['revision'], $revision) && $this->surveyIdentityActive($grant)) {
                 $state['grants'][$key]['last'] = time();
                 if ($returnCode && $scope['hash'] !== $source['hash']) {
                     // Re-enter core with the participant that owns this code. Core's
@@ -241,7 +254,7 @@ trait SurveySessionAuth
                     $this->exitAfterHook();
                     return;
                 }
-                $this->authorizedSurveyRequest = ['scope' => $scope, 'key' => $key, 'flow' => $flow, 'grant' => $state['grants'][$key], 'new' => $newRepeat];
+                $this->authorizedSurveyRequest = ['scope' => $scope, 'key' => $key, 'flow' => $flow, 'grant' => $state['grants'][$key], 'new' => $newRepeat, 'startover' => $startOver];
                 return;
             }
             unset($state['grants'][$key]);
@@ -254,7 +267,9 @@ trait SurveySessionAuth
             while (count($state['logins']) > 16) array_shift($state['logins']);
             if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 http_response_code(403);
-                $this->renderSurveyLogin($id, 'Your submission was not saved. Sign in to reopen the survey. Unsaved answers are not restored automatically; use your browser Back button to recover them if available. Uploaded files may need to be selected again.');
+                $this->renderSurveyLogin($id, $restartRequiresLogin
+                    ? 'Sign in again before starting over so authentication values can be restored. Then choose Start over again.'
+                    : 'Your submission was not saved. Sign in to reopen the survey. Unsaved answers are not restored automatically; use your browser Back button to recover them if available. Uploaded files may need to be selected again.');
             } else {
                 $this->renderSurveyLogin($id);
             }
@@ -416,7 +431,8 @@ trait SurveySessionAuth
         unset($state['logins'][$id]);
         $scope['record'] = $result['record'] === null ? null : (string)$result['record'];
         $grant = ['username' => $username, 'method' => $result['method'], 'revision' => $login['revision'],
-            'issued' => time(), 'last' => time(), 'expires' => time() + self::ABSOLUTE_TTL];
+            'issued' => time(), 'last' => time(), 'expires' => time() + self::ABSOLUTE_TTL,
+            'authentication_values' => $result['authentication_values'] ?? []];
         if ($grant['method'] === 'Table') $grant['account_revision'] = $this->surveyAccountRevision($username);
         $returnOnly = ($login['purpose'] ?? 'survey') === 'return';
         if ($returnOnly) {
@@ -432,6 +448,36 @@ trait SurveySessionAuth
         if (!empty($login['return'])) $destination .= '&__return=1';
         if (!empty($login['new'])) $destination .= '&new';
         return ['success'=>true, 'redirect'=>$destination];
+    }
+
+    private function restoreAuthenticationAfterStartOver($projectId, $record, $instrument, $eventId,
+        $hash, $responseId, $instance): bool
+    {
+        $request = $this->authorizedSurveyRequest;
+        if (!$request || empty($request['startover']) || !$this->settings->canwrite) return false;
+        $scope = $request['scope'];
+        if ($scope['record'] === null || (string)$projectId !== (string)$scope['project_id'] ||
+            (string)$record !== $scope['record'] || $instrument !== $scope['form_name'] ||
+            (string)$eventId !== (string)$scope['event_id'] || $hash !== $scope['hash'] ||
+            (string)$responseId !== (string)$scope['response_id'] || (int)$instance !== (int)$scope['instance']) return false;
+        $values = $request['grant']['authentication_values'] ?? [];
+        if (!$values) return false;
+        try {
+            // Core clears the response before page_top, but has already built its
+            // form data. Reload after restoration to avoid rendering stale blanks.
+            $current = $this->surveyScope($projectId, $hash, $responseId);
+            if ($current['first_submit_time'] !== null || $this->surveyScopeKey($current) !== $this->surveyScopeKey($scope)) {
+                throw new \RuntimeException('Survey reset could not be confirmed.');
+            }
+            $result = $this->saveSurveyAuthenticationValues($values, $projectId, $instrument, $eventId, $instance, $record);
+            if (!is_array($result) || !empty($result['errors'])) throw new \RuntimeException('Metadata restoration failed.');
+            $this->framework->redirectAfterHook($this->surveyPath(APP_PATH_SURVEY_FULL).'?s='.rawurlencode($hash), true);
+        } catch (\Throwable $e) {
+            $state =& $this->surveySession();
+            unset($state['grants'][$request['key']]);
+            $this->surveyStop('The survey was reset, but authentication values could not be restored. Please reopen the survey and sign in again.', 503);
+        }
+        return true;
     }
 
     public function redcap_save_record($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1)

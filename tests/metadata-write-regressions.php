@@ -1,6 +1,9 @@
 <?php
 // Exercise actual metadata completion and tag parsing; REDCap storage is simulated.
-namespace ExternalModules { class AbstractExternalModule {} }
+namespace ExternalModules { class AbstractExternalModule {
+    public $framework, $exited=false;
+    public function exitAfterHook(){ $this->exited=true; }
+} }
 namespace {
 require dirname(__DIR__).'/SurveyAuthExternalModule.php';
 class REDCap {
@@ -57,6 +60,7 @@ foreach(['none','event','form'] as $repeat){
         $expected=$repeat==='none'?[$savedRecord=>[123=>$values]]:
             [$savedRecord=>['repeat_instances'=>[123=>[$repeat==='event'?'':'survey'=>[2=>$values]]]]];
         check($r['success'] && count(REDCap::$writes)===1,'Success-only tag must save once without other mappings');
+        check($r['authentication_values']===$values,'Successful metadata writes retain the exact values for Start over');
         check(REDCap::$writes[0][0]===87 && REDCap::$writes[0][2]===$expected,'Metadata targets only the intended record, event, instrument and repeat instance');
         check($r['record']===($record??'42') && REDCap::$links[0][0]===($record??'42'),'New records use the confirmed returned ID; existing records retain their ID');
     }

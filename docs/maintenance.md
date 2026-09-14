@@ -49,7 +49,7 @@ These suites do not need a REDCap bootstrap, database, credentials or web server
 | Dashboard copying and publication | `dashboard-copy-regressions.php` |
 | Login rendering, AJAX and redirects | `login-branding-regressions.php`, `login-ajax-regressions.php`, `login-javascript-regressions.js` |
 | Authentication event contents and modes | `authentication-logging-regressions.php` |
-| Metadata saves and repeat structures | `metadata-write-regressions.php` |
+| Metadata saves, Start over and repeat structures | `metadata-write-regressions.php`, `start-over-regressions.php` |
 | Table login and grant revocation | `table-account-regressions.php` |
 | Lockout expiry and synchronization | `lockout-regressions.php`, `lockout-storage-regressions.php` |
 | LDAP dispatch and result isolation | `ldap-regressions.php` |

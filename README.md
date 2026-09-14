@@ -146,6 +146,7 @@ Authorization is stored in the REDCap survey session for the browser making the 
 
 - Login forms expire after 10 minutes. Reopen the resource to obtain a fresh form.
 - Authorization expires after 30 minutes without authorized activity or 8 hours after login, whichever comes first. REDCap session expiry or loss of the session cookie can end access earlier.
+- With **Allow writing** enabled, **Start over** restores the exact authentication values originally written by the module (including the original timestamp), while leaving survey answers cleared. Sessions created before this feature ask for login again before resetting.
 - Survey authorization is scoped to the survey response and repeat instance. Public starts are kept separate; Save & Return still requires REDCap's return-code validation and SurveyAuth authorization.
 - Dashboard and report authorization is scoped to the individual resource and endpoint. Logging into one does not authorize another.
 - Protection-setting changes invalidate existing authorization. Table-authenticated sessions also recheck account suspension and password changes. LDAP credentials are checked at login, not on each subsequent request.

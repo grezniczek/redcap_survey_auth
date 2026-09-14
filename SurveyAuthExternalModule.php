@@ -128,6 +128,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     function redcap_survey_page_top($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance = 1) {
+        if ($this->restoreAuthenticationAfterStartOver($project_id, $record, $instrument, $event_id,
+            $survey_hash, $response_id, $repeat_instance)) return;
         if (!empty($this->authorizedSurveyRequest['new'])) {
             print "<script>$(function(){ $('<input>', {type:'hidden',name:'__sa_new',value:'1'}).appendTo('#form'); });</script>";
         }
@@ -617,64 +619,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     foreach ($tf->map as $k => $v) {
                         if (strlen($tf->map[$k])) $data_values[$v] = $result[$k];
                     }
-                    // Prepare data object for REDCap::saveData
-                    $Proj = new \Project($project_id);
-                    if ($Proj->isRepeatingEvent($event_id)) {
-                        $data_to_save = array(
-                            $record => array(
-                                "repeat_instances" => array(
-                                    $event_id => array(
-                                        "" => array(
-                                            $repeat_instance => $data_values
-                                        )
-                                    )
-                                )
-                            )
-                        );
-                    }
-                    else if ($Proj->isRepeatingForm($event_id, $instrument)) {
-                        $data_to_save = array(
-                            $record => array(
-                                "repeat_instances" => array(
-                                    $event_id => array(
-                                        $instrument => array(
-                                            $repeat_instance => $data_values
-                                        )
-                                    )
-                                )
-                            )
-                        );
-                    }
-                    else {
-                        $data_to_save = array(
-                            $record => array(
-                                $event_id => $data_values
-                            )
-                        );
-                    }
-                    $response = \REDCap::saveData(
-                        $project_id,       // project_id
-                        'array',           // dataFormat
-                        $data_to_save,     // data
-                        'normal',          // overwriteBehavior
-                        null,              // dateFormat
-                        null,              // type (eav, flat)
-                        null,              // group_id
-                        true,              // dataLogging
-                        true,              // performAutoCalc
-                        true,              // commitData
-                        false,             // logAsAutoCalculations
-                        true,              // skipCalcFields
-                        [],                // changeReasons
-                        false,             // returnDataComparisonArray
-                        true,              // skipFileUploadFields
-                        false,             // removeLockedFields
-                        $new_record,       // addingAutoNumberedRecords
-                        true,              // bypassPromisCheck
-                        null,              // csvDelimiter
-                        false,             // bypassEconsentProtection
-                        null               // loggingUser
-                    );
+                    $response = $this->saveSurveyAuthenticationValues($data_values, $project_id, $instrument,
+                        $event_id, $repeat_instance, $record, $new_record);
                     if (!is_array($response) || !empty($response["errors"]) || ($new_record && !isset($response["ids"][$record]))) {
                         if ($new_record) $record = null;
                         $result["success"] = false;
@@ -683,6 +629,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                         break;
                     }
                     else {
+                        $result['authentication_values'] = $data_values;
                         $record_created = true;
                         if ($new_record) {
                             $record = $response["ids"][$record];
@@ -704,6 +651,70 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
         } while (false);
         return $result;
+    }
+
+    private function saveSurveyAuthenticationValues(array $data_values, $project_id, $instrument,
+        $event_id, $repeat_instance, $record, bool $new_record = false)
+    {
+        // Prepare data object for REDCap::saveData
+        $Proj = new \Project($project_id);
+        if ($Proj->isRepeatingEvent($event_id)) {
+            $data_to_save = array(
+                $record => array(
+                    "repeat_instances" => array(
+                        $event_id => array(
+                            "" => array(
+                                $repeat_instance => $data_values
+                            )
+                        )
+                    )
+                )
+            );
+        }
+        else if ($Proj->isRepeatingForm($event_id, $instrument)) {
+            $data_to_save = array(
+                $record => array(
+                    "repeat_instances" => array(
+                        $event_id => array(
+                            $instrument => array(
+                                $repeat_instance => $data_values
+                            )
+                        )
+                    )
+                )
+            );
+        }
+        else {
+            $data_to_save = array(
+                $record => array(
+                    $event_id => $data_values
+                )
+            );
+        }
+        $response = \REDCap::saveData(
+            $project_id,       // project_id
+            'array',           // dataFormat
+            $data_to_save,     // data
+            'normal',          // overwriteBehavior
+            null,              // dateFormat
+            null,              // type (eav, flat)
+            null,              // group_id
+            true,              // dataLogging
+            true,              // performAutoCalc
+            true,              // commitData
+            false,             // logAsAutoCalculations
+            true,              // skipCalcFields
+            [],                // changeReasons
+            false,             // returnDataComparisonArray
+            true,              // skipFileUploadFields
+            false,             // removeLockedFields
+            $new_record,       // addingAutoNumberedRecords
+            true,              // bypassPromisCheck
+            null,              // csvDelimiter
+            false,             // bypassEconsentProtection
+            null               // loggingUser
+        );
+        return $response;
     }
 
     private function authenticateBackends($username, $password, array &$result): void {
