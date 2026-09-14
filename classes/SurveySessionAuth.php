@@ -357,7 +357,27 @@ trait SurveySessionAuth
             ob_end_clean();
         }
         $jsObject = $this->framework->getJavascriptModuleObjectName();
+        $state['logins'][$id]['framework_csrf'] = $this->framework->getCSRFToken();
         require __DIR__.'/../html/session-login.php';
+    }
+
+    private function useSessionBoundLoginCsrf(): void
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || ($_POST['action'] ?? null) !== 'survey-login' ||
+            !is_string($_POST['payload'] ?? null) || !$this->surveySessionReady()) return;
+        $payload = json_decode($_POST['payload'], true);
+        if (!is_array($payload) || !is_string($payload['context'] ?? null) || !is_string($payload['csrf'] ?? null) ||
+            !is_string($_POST['redcap_external_module_csrf_token'] ?? null)) return;
+        $state =& $this->surveySession();
+        $login = $state['logins'][$payload['context']] ?? null;
+        $token = $_POST['redcap_external_module_csrf_token'];
+        if (!$login || !is_string($login['framework_csrf'] ?? null) ||
+            !hash_equals($login['csrf'], $payload['csrf']) || !hash_equals($login['framework_csrf'], $token)) return;
+        // Framework NOAUTH CSRF uses a browser-wide cookie rotated by other tabs.
+        // Accept this tab's token only after checking both tokens against its live
+        // server-side session context. Change only the request-local cookie view;
+        // framework token and signed-verification checks still run normally.
+        $_COOKIE['redcap_external_module_csrf_token'] = $token;
     }
 
     private function surveyLoginAjax($payload, $project_id): array

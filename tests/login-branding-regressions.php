@@ -5,6 +5,7 @@ require __DIR__.'/session-regressions.php';
 $fixture = new class extends SurveyAuthQueryFixture {
     public function initializeJavascriptModuleObject() { echo '<script>window.testSurveyAuthModule = {};</script>'; }
     public function getJavascriptModuleObjectName() { return 'window.testSurveyAuthModule'; }
+    public function getCSRFToken() { return str_repeat('a',80); }
 };
 $module->framework = $fixture;
 $_SESSION['redcap_survey_auth_v2']['logins']['branding'] = [
@@ -33,6 +34,8 @@ function checkLoginForm($html) {
 REDCap::$testFile = ['text/html', 'untrusted-name.html', base64_decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')];
 $html = renderBranding(['title'=>'<b>A & B</b>', 'hide_title'=>0, 'doc_id'=>42]);
+check($_SESSION['redcap_survey_auth_v2']['logins']['branding']['framework_csrf']===str_repeat('a',80),
+    'Login context retains the framework token embedded in that tab');
 checkLoginForm($html);
 check(str_contains($html, '<h1>A &amp; B</h1>'), 'Survey title is plain, escaped text');
 check(str_contains($html, 'src="data:image/png;base64,'), 'Logo type comes from image bytes, not stored MIME');

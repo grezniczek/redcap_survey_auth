@@ -54,7 +54,10 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $page = defined("PAGE") ? PAGE : "";
         // The framework validates this module's registered AJAX action before dispatch.
         if ($page === 'surveys/index.php' && ($_GET['__passthru'] ?? null) === 'ExternalModules' &&
-            ($_GET['prefix'] ?? null) === $this->PREFIX && ($_GET['ajax'] ?? null) === '1') return;
+            ($_GET['prefix'] ?? null) === $this->PREFIX && ($_GET['ajax'] ?? null) === '1') {
+            $this->useSessionBoundLoginCsrf();
+            return;
+        }
         // This hook handles several things:
         //  - Saving dashboard and report protection settings
         //  - Denying access to public dashboards and reports when set to be blocked from the external survey endpoint

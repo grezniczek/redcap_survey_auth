@@ -47,7 +47,7 @@ These suites do not need a REDCap bootstrap, database, credentials or web server
 | Dashboard/report grant lifecycle | `public-resource-regressions.php` |
 | Endpoint configuration and classification | `endpoint-settings-regressions.php` |
 | Dashboard copying and publication | `dashboard-copy-regressions.php` |
-| Login rendering, AJAX and redirects | `login-branding-regressions.php`, `login-ajax-regressions.php`, `login-javascript-regressions.js` |
+| Login rendering, AJAX and redirects | `login-branding-regressions.php`, `login-ajax-regressions.php`, `login-tab-csrf-regressions.php`, `login-javascript-regressions.js` |
 | Authentication event contents and modes | `authentication-logging-regressions.php` |
 | Metadata saves, Start over and repeat structures | `metadata-write-regressions.php`, `start-over-regressions.php` |
 | Table login and grant revocation | `table-account-regressions.php` |

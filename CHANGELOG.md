@@ -4,6 +4,7 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
+Unreleased | Allow multiple login tabs to retain valid, session-bound framework CSRF tokens. Document that core survey completion destroys the shared survey session and requires other tabs to reauthenticate.
 Unreleased | Restore the original authentication field values after an authorized Start over when Allow writing is enabled, including repeating response scopes.
 Unreleased | Login now uses JSMO.ajax through the survey endpoint, supporting survey hosts that block direct external-module pages. Login requires JavaScript; failed attempts update the form and successful attempts redirect.
 v2.2.0  | Security update: Session-scoped survey/dashboard/report authorization replaces URL tokens and daily grants; credentials use a dedicated login endpoint. Corrected endpoint selection, dashboard-copy protection, authentication ordering, lockouts, identity writes, and survey audit details. Removed unused success-message/Continue-label settings and forwarding template; migrated setting cleanup to supported enable hooks, including disabled projects. See README for session lifetimes and configuration behavior.
