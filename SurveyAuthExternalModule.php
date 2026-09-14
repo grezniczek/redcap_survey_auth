@@ -198,6 +198,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     .append("<input class='custom-control-input' name='surveyauth_report_denyexternal' id='surveyauth_report_denyexternal' <?=$deny_external?> type='checkbox'>")
                     .append("<label class='custom-control-label ms-1' for='surveyauth_report_denyexternal'>Deny access via (external) survey endpoint</label>")
                     .appendTo($container);
+                    <?php $this->renderEndpointCopyButtonsJavascript('report'); ?>
                 }
                 $container.on('change', function(e) {
                     <?=$jsmo?>.ajax('save-report-settings', {
@@ -367,6 +368,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     .append("<input class='custom-control-input' name='surveyauth_dash_denyexternal' id='surveyauth_dash_denyexternal' <?=$deny_external?> type='checkbox'>")
                     .append("<label class='custom-control-label ms-1' for='surveyauth_dash_denyexternal'>Deny access via (external) survey endpoint</label>")
                     .appendTo($container);
+                    <?php $this->renderEndpointCopyButtonsJavascript('dash'); ?>
                 }
             });
         </script>
@@ -403,6 +405,54 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     #endregion
 
     #region Helpers
+
+    private function renderEndpointCopyButtonsJavascript(string $type): void {
+        $options = json_encode([
+            'type' => $type,
+            'parameter' => $type === 'report' ? '__report' : '__dashboard',
+            'bases' => [
+                'external' => rtrim($GLOBALS['redcap_survey_base_url'], '/') . '/surveys/',
+                'internal' => rtrim($GLOBALS['redcap_base_url'], '/') . '/surveys/',
+            ],
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        ?>
+        {
+            const options = <?= $options ?>;
+            // Use the canonical public link, never a shortened URL or the staff editor URL.
+            const publicLink = $('#' + options.type + 'url').val();
+            const hash = publicLink ? new URL(publicLink, window.location.href).searchParams.get(options.parameter) : null;
+            if (hash) {
+                Object.entries(options.bases).forEach(([endpoint, base]) => {
+                    const url = new URL(base);
+                    url.searchParams.set(options.parameter, hash);
+                    const title = 'Copy ' + endpoint + ' ' + (options.type === 'report' ? 'report' : 'dashboard') + ' link';
+                    const $button = $('<button>', {
+                        type: 'button',
+                        class: 'btn btn-light btn-xs ms-1',
+                        title: title,
+                        'aria-label': title,
+                        'data-clipboard-text': url.href
+                    })
+                    .css({padding: '2px 3px', 'font-size': '9px'})
+                    .append($('<i>', {class: 'fas fa-copy', 'aria-hidden': 'true'}))
+                    .insertAfter($container.find('label[for="surveyauth_' + options.type + '_endpoint_' + endpoint + '"]'));
+                    // Separate from core's btn-clipboard handler, which inserts "Copied!" text.
+                    const clipboard = new Clipboard($button[0]);
+                    let feedback;
+                    clipboard.on('success', function() {
+                        if (feedback) feedback.cancel();
+                        const background = getComputedStyle($button[0]).backgroundColor;
+                        feedback = $button[0].animate([
+                            {backgroundColor: background},
+                            {backgroundColor: '#90ee90', offset: 0.2},
+                            {backgroundColor: background}
+                        ], {duration: 800, easing: 'ease-out'});
+                    });
+                });
+            }
+        }
+        <?php
+    }
 
     private function renderPublicResourceSettingsStyle(): void {
         ?>
