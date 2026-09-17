@@ -62,10 +62,10 @@
 
 <body>
 	<main>
-		<?php if ($logoSource !== ''): ?><img class="survey-logo" src="<?= $logoSource ?>" alt="<?= $escape($logoAlt) ?>"><?php endif; ?>
+		<?php if ($logoSource !== ''): ?><img class="survey-logo" data-surveyauth-survey-logo src="<?= $logoSource ?>" alt="<?= $escape($logoAlt) ?>"><?php endif; ?>
 		<?php if ($surveyTitle !== ''): ?><h1 data-surveyauth-survey-title><?= $surveyTitle ?></h1><?php endif; ?>
 		<?php if (count($mlmCatalogue['languages'] ?? []) > 1): ?>
-			<div class="survey-auth-languages" id="survey-auth-languages" role="group" aria-label="<?= $escape($languageLabel) ?>" data-surveyauth-i18n-aria-label="login.language_label">
+			<div class="survey-auth-languages" id="survey-auth-languages">
 				<?php foreach ($mlmCatalogue['languages'] as $languageId => $language): ?>
 					<button type="button" class="btn <?= $languageId === $mlmCatalogue['current'] ? 'btn-primary' : 'btn-outline-secondary' ?> btn-sm" data-surveyauth-language="<?= $escape($languageId) ?>" <?= $languageId === $mlmCatalogue['current'] ? ' aria-pressed="true"' : ' aria-pressed="false"' ?>><i class="fas fa-check me-1 survey-auth-language-check" aria-hidden="true"></i><?= $escape($language['display']) ?></button>
 				<?php endforeach; ?>

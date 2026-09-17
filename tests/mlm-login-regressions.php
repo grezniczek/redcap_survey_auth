@@ -35,6 +35,9 @@ namespace MultiLanguageManagement {
         public static function formatLangIdForHtmlTag($languageId) { return strtolower(explode('-', $languageId)[0]); }
         public static function getCurrentLanguage($context) { return self::$current; }
         public static function getDDTranslation($context, $type, $form) {
+            if ($type === 'survey-logo_alt_text') {
+                return ['de-DE'=>'Logo der Studie', 'en-US'=>'Study logo'][$context->languageId] ?? '';
+            }
             return ['de-DE'=>'Studienumfrage', 'en-US'=>'Study survey'][$context->languageId] ?? '';
         }
     }
@@ -77,6 +80,8 @@ namespace {
         ],
     ];
     $items = invoke($module, 'surveyMlmLoginItems', $settings);
+    check(!isset($items['login.language_label'], $items['login.logo_alt']),
+        'The obsolete selector and logo-alt strings are not exposed for translation.');
     $framework->stored = json_encode(['version'=>1, 'languages'=>[
         'de-DE' => [
             'login.heading' => ['value'=>'Anmelden', 'source_hash'=>hash('sha256', $items['login.heading']['value'])],
@@ -96,6 +101,9 @@ namespace {
         $presentation['strings']['login.username_label'] === 'Benutzername', 'Saved language-specific login strings are used.');
     check($presentation['languages']['de-DE']['survey_title'] === 'Studienumfrage' &&
         $presentation['languages']['en-US']['survey_title'] === 'Study survey', 'MLM survey titles join the login language catalogue.');
+    check($presentation['languages']['de-DE']['survey_logo_alt'] === 'Logo der Studie' &&
+        $presentation['languages']['en-US']['survey_logo_alt'] === 'Study logo',
+        'MLM custom-logo alternative text joins the login language catalogue.');
     check($presentation['strings']['login.password_label'] === 'Pass phrase', 'Missing strings use the configured MLM fallback language.');
     check($presentation['strings']['login.submit_label'] === $items['login.submit_label']['value'], 'Invalid translation entries fail closed to the reference string.');
 

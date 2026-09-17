@@ -57,12 +57,11 @@ function fixture(ajax) {
     const heading = {dataset: {}, textContent: '', getAttribute() { return 'login.heading'; }};
     const instruction = {dataset: {surveyauthHtml: 'true'}, innerHTML: '', getAttribute() { return 'login.instructions'; }};
     const surveyTitle = {textContent: ''};
+    const surveyLogo = {setAttribute(name, value) { this[name] = value; }};
     const pageTitle = {textContent: ''};
     let changeLanguage;
     const languageButton = {dataset: {surveyauthLanguage: 'fr-FR'}, setAttribute(name, value) { this[name] = value; },
         addEventListener(event, callback) { assert.equal(event, 'click'); changeLanguage = callback; }};
-    const languageSwitcher = {setAttribute(name, value) { this[name] = value; },
-        getAttribute() { return 'login.language_label'; }};
     const languageError = {dataset: {}, textContent: ''};
     const languageSubmit = {disabled: true};
     const languageUsername = {value: ''};
@@ -75,8 +74,8 @@ function fixture(ajax) {
         getElementById() { return languageError; },
         querySelectorAll(selector) {
             if (selector === '[data-surveyauth-i18n]') return [heading, instruction];
-            if (selector === '[data-surveyauth-i18n-aria-label]') return [languageSwitcher];
             if (selector === '[data-surveyauth-survey-title]') return [surveyTitle];
+            if (selector === '[data-surveyauth-survey-logo]') return [surveyLogo];
             if (selector === '[data-surveyauth-language]') return [languageButton];
             return [];
         },
@@ -89,18 +88,19 @@ function fixture(ajax) {
     languageContext.initializeSurveyAuthLogin(languageForm, {ajax: async () => ({success: false})}, {
         current: 'de-DE',
         languages: {
-            'de-DE': {html_lang: 'de', rtl: false, survey_title: 'Deutsche Studie', strings: {'login.heading': 'Anmelden', 'login.instructions': '<em>Bitte anmelden</em>'}},
-            'fr-FR': {html_lang: 'fr', rtl: false, survey_title: 'Étude française', strings: {'login.heading': 'Connexion', 'login.instructions': '<em>Veuillez vous connecter</em>'}}
+            'de-DE': {html_lang: 'de', rtl: false, survey_title: 'Deutsche Studie', survey_logo_alt: 'Logo der Studie', strings: {'login.heading': 'Anmelden', 'login.instructions': '<em>Bitte anmelden</em>'}},
+            'fr-FR': {html_lang: 'fr', rtl: false, survey_title: 'Étude française', survey_logo_alt: 'Logo de l’étude', strings: {'login.heading': 'Connexion', 'login.instructions': '<em>Veuillez vous connecter</em>'}}
         }
     });
     assert.equal(heading.textContent, 'Anmelden');
     assert.equal(instruction.innerHTML, '<em>Bitte anmelden</em>');
     assert.equal(surveyTitle.textContent, 'Deutsche Studie');
+    assert.equal(surveyLogo.alt, 'Logo der Studie');
     assert.equal(pageTitle.textContent, 'Deutsche Studie — Anmelden');
-    assert.equal(languageSwitcher['aria-label'], undefined, 'Missing translation does not alter the initial accessible label.');
     changeLanguage();
     assert.equal(heading.textContent, 'Connexion');
     assert.equal(surveyTitle.textContent, 'Étude française');
+    assert.equal(surveyLogo.alt, 'Logo de l’étude');
     assert.equal(pageTitle.textContent, 'Étude française — Connexion');
     assert.equal(languageDocument.documentElement.lang, 'fr');
     assert.equal(languageButton.className, 'btn btn-primary btn-sm');

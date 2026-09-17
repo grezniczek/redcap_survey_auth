@@ -31,8 +31,6 @@ trait SurveyAuthMlm
             'login.javascript_required' => ['label' => 'JavaScript-required message', 'value' => 'JavaScript is required to sign in. Please enable JavaScript and reopen this page.', 'html' => false],
             'login.start_over' => ['label' => 'Start-over reauthentication message', 'value' => 'Sign in again before starting over so authentication values can be restored. Then choose Start over again.', 'html' => false],
             'login.unsaved_submission' => ['label' => 'Unsaved-submission message', 'value' => 'Your submission was not saved. Sign in to reopen the survey. Unsaved answers are not restored automatically; use your browser Back button to recover them if available. Uploaded files may need to be selected again.', 'html' => false],
-            'login.language_label' => ['label' => 'Language selector label', 'value' => 'Language', 'html' => false],
-            'login.logo_alt' => ['label' => 'Survey logo alternative text', 'value' => 'Survey logo', 'html' => false],
         ];
     }
 
@@ -223,20 +221,24 @@ trait SurveyAuthMlm
                 $resolved[$key] = $this->surveyMlmResolveString($translations, $languageId, $fallback, $key, $item['value']);
             }
             $translatedSurveyTitle = $surveyTitle;
-            if ($surveyTitle !== '') {
-                try {
-                    $titleContext = \REDCap\Context::Builder($context)->lang_id($languageId)->Build();
-                    $title = $mlm::getDDTranslation($titleContext, 'survey-title', $form);
+            $translatedLogoAlt = 'Survey logo';
+            try {
+                $translationContext = \REDCap\Context::Builder($context)->lang_id($languageId)->Build();
+                if ($surveyTitle !== '') {
+                    $title = $mlm::getDDTranslation($translationContext, 'survey-title', $form);
                     if (is_string($title) && strip_tags($title) !== '') $translatedSurveyTitle = strip_tags($title);
-                } catch (\Throwable $e) {
-                    // The login continues safely with the already escaped reference title.
                 }
+                $logoAlt = $mlm::getDDTranslation($translationContext, 'survey-logo_alt_text', $form);
+                if (is_string($logoAlt) && trim(strip_tags($logoAlt)) !== '') $translatedLogoAlt = strip_tags($logoAlt);
+            } catch (\Throwable $e) {
+                // The login continues safely with the reference title and logo description.
             }
             $catalogue[$languageId] = [
                 'display' => $language['display'],
                 'html_lang' => $language['html_lang'],
                 'rtl' => $language['rtl'],
                 'survey_title' => $translatedSurveyTitle,
+                'survey_logo_alt' => $translatedLogoAlt,
                 'strings' => $resolved,
             ];
         }

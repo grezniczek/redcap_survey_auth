@@ -52,10 +52,6 @@ function initializeSurveyAuthLogin(form, module, translations) {
             if (element.dataset.surveyauthHtml === 'true') element.innerHTML = value;
             else element.textContent = value;
         });
-        document.querySelectorAll('[data-surveyauth-i18n-aria-label]').forEach(function(element) {
-            const value = stringFor(element.getAttribute('data-surveyauth-i18n-aria-label'));
-            if (value !== null) element.setAttribute('aria-label', value);
-        });
         if (typeof selected.survey_title === 'string') {
             document.querySelectorAll('[data-surveyauth-survey-title]').forEach(function(element) {
                 element.textContent = selected.survey_title;
@@ -66,6 +62,11 @@ function initializeSurveyAuthLogin(form, module, translations) {
                 const heading = stringFor('login.heading') || pageTitle.textContent;
                 pageTitle.textContent = selected.survey_title === '' ? heading : selected.survey_title + ' — ' + heading;
             }
+        }
+        if (typeof selected.survey_logo_alt === 'string') {
+            document.querySelectorAll('[data-surveyauth-survey-logo]').forEach(function(element) {
+                element.setAttribute('alt', selected.survey_logo_alt);
+            });
         }
         const errorKey = error.dataset ? error.dataset.surveyauthErrorKey :
             (typeof error.getAttribute === 'function' ? error.getAttribute('data-surveyauth-error-key') : null);

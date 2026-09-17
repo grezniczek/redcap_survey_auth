@@ -37,7 +37,9 @@ $loginTemplate = file_get_contents(dirname(__DIR__).'/html/session-login.php');
 check(strpos($loginTemplate, '<h1 data-surveyauth-survey-title>') < strpos($loginTemplate, 'id="survey-auth-languages"') &&
     strpos($loginTemplate, 'id="survey-auth-languages"') < strpos($loginTemplate, '<h2 data-surveyauth-i18n="login.heading">'),
     'The MLM language selector is placed between the survey title and login prompt.');
-check(!str_contains($loginTemplate, '<strong data-surveyauth-i18n="login.language_label">') &&
+check(!str_contains($loginTemplate, 'login.language_label') &&
+    !str_contains($loginTemplate, 'data-surveyauth-i18n-aria-label') &&
+    str_contains($loginTemplate, 'data-surveyauth-survey-logo') &&
     str_contains($loginTemplate, 'class="btn <?= $languageId === $mlmCatalogue[\'current\'] ? \'btn-primary\' : \'btn-outline-secondary\' ?> btn-sm"') &&
     str_contains($loginTemplate, 'class="form-control form-control-sm"') && str_contains($loginTemplate, 'class="btn btn-primary mt-3"'),
     'Login controls and the MLM selector retain their Bootstrap presentation.');

@@ -350,14 +350,14 @@ trait SurveySessionAuth
             $loginHeading = $strings['login.heading'] ?? $loginHeading;
             $error = $errorKey !== '' ? ($strings[$errorKey] ?? $error) : $error;
             $surveyTitle = $mlmPresentation['languages'][$mlmPresentation['current']]['survey_title'] ?? $surveyTitle;
+            $logoAlt = $mlmPresentation['languages'][$mlmPresentation['current']]['survey_logo_alt'] ?? 'Survey logo';
         }
         $surveyTitle = $escape($surveyTitle);
         $instructions = $strings['login.instructions'] ?? $this->settings->text;
         $usernameLabel = $strings['login.username_label'] ?? $this->settings->usernameLabel;
         $passwordLabel = $strings['login.password_label'] ?? $this->settings->passwordLabel;
         $submitLabel = $strings['login.submit_label'] ?? $this->settings->submitLabel;
-        $languageLabel = $strings['login.language_label'] ?? 'Language';
-        $logoAlt = $strings['login.logo_alt'] ?? 'Survey logo';
+        $logoAlt ??= 'Survey logo';
         $noJavascript = $strings['login.javascript_required'] ?? 'JavaScript is required to sign in. Please enable JavaScript and reopen this page.';
         $htmlLang = $mlmPresentation['html_lang'] ?? 'en';
         $rtl = !empty($mlmPresentation['rtl']);
