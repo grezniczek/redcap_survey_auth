@@ -309,18 +309,36 @@ trait SurveyAuthMlm
                 $notice = '<div class="alert alert-danger">Translations could not be saved.</div>';
             }
         }
+        $mlmSetupCss = defined('APP_PATH_CSS') ? APP_PATH_CSS.'multilanguage-setup.css' : '';
+        $mlmBundleJavascript = defined('APP_PATH_JS') ? APP_PATH_JS.'Libraries/bundle-multilanguage.js' : '';
         ?>
+        <?php if ($mlmSetupCss !== ''): ?><link rel="stylesheet" href="<?= $escape($mlmSetupCss) ?>"><?php endif; ?>
+        <style>
+            .surveyauth-mlm-editor-sticky {
+                position: sticky;
+                top: 0;
+                z-index: 1020;
+                padding: .5rem 0 1.25rem;
+                background: var(--bs-body-bg, #fff);
+            }
+            .surveyauth-mlm-editor-sticky .projhdr { margin-top: 0; }
+        </style>
         <div style="max-width: 950px">
-            <div class="projhdr"><i class="fas fa-language"></i> Survey Auth login translations</div>
-            <?= $notice ?>
-            <p class="text-muted">A source-change marker means that the underlying Survey Auth setting changed after this translation was saved.</p>
-            <form method="post">
+            <form id="surveyauth-mlm-translations" method="post">
                 <input type="hidden" name="redcap_csrf_token" value="<?= $escape($this->framework->getCSRFToken()) ?>">
-                <ul class="nav nav-tabs mb-3" role="tablist">
-                    <?php $first = true; foreach ($languages as $languageId => $language): ?>
-                    <li class="nav-item" role="presentation"><a class="nav-link<?= $first ? ' active' : '' ?>" data-toggle="tab" href="#surveyauth-mlm-<?= $escape($languageId) ?>" role="tab"><?= $escape($language['display']) ?></a></li>
-                    <?php $first = false; endforeach; ?>
-                </ul>
+                <div class="surveyauth-mlm-editor-sticky">
+                    <div class="projhdr"><i class="fas fa-language"></i> Survey Auth login translations</div>
+                    <p class="text-muted mb-2">Provide the text shown on Survey Auth login pages for each active Multi-Language Management language.</p>
+                    <?= $notice ?>
+                    <button class="btn btn-sm btn-primary mb-2" type="submit"><i class="fas fa-save me-1"></i> Save translations</button>
+                    <div class="mlm-sub-category-nav nav d-block">
+                        <ul class="nav nav-tabs" role="tablist">
+                            <?php $first = true; foreach ($languages as $languageId => $language): ?>
+                            <li class="nav-item" role="presentation"><a class="nav-link mlm-sub-category-link<?= $first ? ' active' : '' ?>" data-bs-toggle="tab" href="#surveyauth-mlm-<?= $escape($languageId) ?>" role="tab" aria-selected="<?= $first ? 'true' : 'false' ?>"><?= $escape($language['display']) ?></a></li>
+                            <?php $first = false; endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
                 <div class="tab-content">
                     <?php $first = true; foreach ($languages as $languageId => $language): ?>
                     <div class="tab-pane fade<?= $first ? ' show active' : '' ?>" id="surveyauth-mlm-<?= $escape($languageId) ?>" role="tabpanel">
@@ -333,7 +351,7 @@ trait SurveyAuthMlm
                             <label class="form-label fw-bold" for="surveyauth-mlm-<?= $escape($languageId.'-'.$key) ?>"><?= $escape($item['label']) ?><?= $stale ? ' <span class="badge bg-warning text-dark">Source changed</span>' : '' ?></label>
                             <div class="ms-2">
 
-                                <textarea class="form-control" rows="<?= $item['html'] ? '4' : '2' ?>" id="surveyauth-mlm-<?= $escape($languageId.'-'.$key) ?>" name="surveyauth_mlm_translation[<?= $escape($languageId) ?>][<?= $escape($key) ?>]" maxlength="<?= $item['html'] ? '32768' : '4096' ?>"><?= $escape($value) ?></textarea>
+                                <textarea class="form-control form-control-sm textarea-autosize" rows="1" id="surveyauth-mlm-<?= $escape($languageId.'-'.$key) ?>" name="surveyauth_mlm_translation[<?= $escape($languageId) ?>][<?= $escape($key) ?>]" maxlength="<?= $item['html'] ? '32768' : '4096' ?>"><?= $escape($value) ?></textarea>
                                 <div class="form-text">Reference: <?= $escape($item['value']) ?></div>
                             </div>
                         </div>
@@ -341,9 +359,12 @@ trait SurveyAuthMlm
                     </div>
                     <?php $first = false; endforeach; ?>
                 </div>
-                <button class="btn btn-primary" type="submit">Save translations</button>
             </form>
         </div>
+        <?php if ($mlmBundleJavascript !== ''): ?><script src="<?= $escape($mlmBundleJavascript) ?>"></script><?php endif; ?>
+        <script><?php require __DIR__.'/../js/mlm-translations.js'; ?>
+        initializeSurveyAuthMlmTranslations();
+        </script>
         <?php
     }
 }

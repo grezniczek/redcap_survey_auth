@@ -111,5 +111,11 @@ namespace {
     \MultiLanguageManagement\MultiLanguage::$settings['langs']['fr-FR']['active'] = false;
     check(!invoke($module, 'surveyMlmTranslationEditorAvailable', 1),
         'The editor remains hidden when MLM has no active project language.');
+    $editor = file_get_contents(dirname(__DIR__).'/classes/SurveyAuthMlm.php');
+    check(str_contains($editor, "APP_PATH_CSS.'multilanguage-setup.css'") &&
+        str_contains($editor, 'surveyauth-mlm-editor-sticky') &&
+        strpos($editor, 'Save translations') < strpos($editor, 'data-bs-toggle="tab"') &&
+        str_contains($editor, 'class="form-control form-control-sm textarea-autosize" rows="1"'),
+        'The translation editor keeps its MLM-style navigation and compact autosizing fields available while scrolling.');
     echo "Passed MLM Survey Auth language eligibility, fallback, and storage validation regressions.\n";
 }
