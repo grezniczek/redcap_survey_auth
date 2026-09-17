@@ -17,11 +17,11 @@ $settings->text = 'Please sign in.';
 $settings->usernameLabel = 'Username';
 $settings->passwordLabel = 'Password';
 $settings->submitLabel = 'Sign in';
-function renderBranding($branding) {
+function renderBranding($branding, $error = '<unsafe-error>') {
     global $module, $fixture;
     $fixture->results = [[$branding]];
     ob_start();
-    callPrivate($module, 'renderSurveyLogin', 'branding', '<unsafe-error>');
+    callPrivate($module, 'renderSurveyLogin', 'branding', $error);
     return ob_get_clean();
 }
 function checkLoginForm($html) {
@@ -39,7 +39,7 @@ check(strpos($loginTemplate, '<h1 data-surveyauth-survey-title>') < strpos($logi
     'The MLM language selector is placed between the survey title and login prompt.');
 check(!str_contains($loginTemplate, '<strong data-surveyauth-i18n="login.language_label">') &&
     str_contains($loginTemplate, 'class="btn <?= $languageId === $mlmCatalogue[\'current\'] ? \'btn-primary\' : \'btn-outline-secondary\' ?> btn-sm"') &&
-    str_contains($loginTemplate, 'class="form-control"') && str_contains($loginTemplate, 'class="btn btn-primary mt-4"'),
+    str_contains($loginTemplate, 'class="form-control form-control-sm"') && str_contains($loginTemplate, 'class="btn btn-primary mt-3"'),
     'Login controls and the MLM selector retain their Bootstrap presentation.');
 REDCap::$testFile = ['text/html', 'untrusted-name.html', base64_decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')];
@@ -52,6 +52,8 @@ check(!empty($fixture->redcapJsLoaded) && !empty($fixture->bootstrapLoaded),
 check(preg_match('/<h1(?:\s[^>]*)?>A &amp; B<\/h1>/', $html) === 1, 'Survey title is plain, escaped text');
 check(str_contains($html, 'src="data:image/png;base64,'), 'Logo type comes from image bytes, not stored MIME');
 check(str_contains($html, '&lt;unsafe-error&gt;'), 'Failed login error remains escaped');
+check(str_contains(renderBranding(['title'=>'Survey', 'hide_title'=>0, 'doc_id'=>null], ''),
+    'id="survey-auth-error" role="alert" hidden'), 'Empty errors do not occupy space on the login page.');
 check($fixture->queries[0][1] === [1,2], 'Branding lookup uses the stored project and survey');
 check(REDCap::$fileReads === [42], 'Only the configured, project-owned logo is read');
 $html = renderBranding(['title'=>'Hidden title', 'hide_title'=>1, 'doc_id'=>null]);

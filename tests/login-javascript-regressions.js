@@ -39,6 +39,7 @@ function fixture(ajax) {
     await first;
     assert.equal(f.form.dataset.csrf, 'new-csrf');
     assert.equal(f.error.textContent, '<unsafe-error>');
+    assert.equal(f.error.hidden, false, 'A returned error is made visible.');
     assert.equal(f.password.focused, true);
     assert.equal(f.button.disabled, false);
     const good = fixture(async () => ({success: true, redirect: '/surveys/?s=fixture&__sa_flow=flow'}));

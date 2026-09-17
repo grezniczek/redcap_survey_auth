@@ -26,15 +26,16 @@ function initializeSurveyAuthLogin(form, module, translations) {
 
     function setError(key, fallback) {
         const translated = typeof key === 'string' ? stringFor(key) : null;
+        const message = translated !== null ? translated : fallback;
         if (translated !== null) {
             if (error.dataset) error.dataset.surveyauthErrorKey = key;
             else if (typeof error.setAttribute === 'function') error.setAttribute('data-surveyauth-error-key', key);
-            error.textContent = translated;
         } else {
             if (error.dataset) delete error.dataset.surveyauthErrorKey;
             else if (typeof error.removeAttribute === 'function') error.removeAttribute('data-surveyauth-error-key');
-            error.textContent = fallback;
         }
+        error.textContent = message;
+        error.hidden = message === '';
     }
 
     function setLanguage(language, persist) {
@@ -90,6 +91,7 @@ function initializeSurveyAuthLogin(form, module, translations) {
         pending = true;
         button.disabled = true;
         error.textContent = '';
+        error.hidden = true;
         let password = passwordInput.value;
         passwordInput.value = '';
         // JSMO can log its payload on transport errors. Serialize credentials once,

@@ -37,8 +37,13 @@
 		h2 {
 			font-size: 1.5rem;
 		}
-		[role=alert] {
-			color: #a32020;
+		#survey-auth-error:not([hidden]) {
+			margin-top: 1rem;
+			padding: .75rem 1rem;
+			color: #842029;
+			background-color: #fff5f5;
+			border: 1px solid #dc3545;
+			border-radius: var(--bs-border-radius, .375rem);
 		}
 		.survey-auth-languages {
 			margin-bottom: .5rem;
@@ -70,7 +75,7 @@
 			<h1 data-surveyauth-i18n="login.heading"><?= $escape($loginHeading) ?></h1>
 		<?php endif; ?>
 		<div data-surveyauth-i18n="login.instructions" data-surveyauth-html="true"><?= $instructions ?></div>
-		<div id="survey-auth-error" role="alert" <?= $errorKey !== '' ? ' data-surveyauth-error-key="' . $escape($errorKey) . '"' : '' ?>><?= $escape($error) ?></div>
+		<div id="survey-auth-error" role="alert"<?= trim($error) === '' ? ' hidden' : '' ?><?= $errorKey !== '' ? ' data-surveyauth-error-key="' . $escape($errorKey) . '"' : '' ?>><?= $escape($error) ?></div>
 		<noscript>
 			<p><?= $escape($noJavascript) ?></p>
 		</noscript>
