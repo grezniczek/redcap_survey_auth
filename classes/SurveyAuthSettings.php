@@ -125,12 +125,14 @@ class SurveyAuthSettings {
         $creds = array();
         $lines = explode("\n", $raw);
         foreach ($lines as $line) {
-            $parts = explode(":", $line);
-            if (count($parts) > 1) {
-                $username = strtolower($parts[0]);
-                $password = join(":", array_slice($parts, 1));
-                $creds[$username] = $password;
-            }
+            $parts = explode(":", $line, 2);
+            if (count($parts) !== 2) continue;
+            $username = strtolower(trim($parts[0]));
+            // Remove the line ending from CRLF settings without otherwise
+            // changing the exact, case-sensitive password.
+            $password = rtrim($parts[1], "\r");
+            if ($username === '' || $password === '') continue;
+            $creds[$username] = $password;
         }
         return $creds;
     }

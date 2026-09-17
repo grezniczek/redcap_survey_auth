@@ -19,6 +19,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     use SurveyAuthMlm;
     
     public static $ACTIONTAG = "SURVEY-AUTH";
+    private const LOCKOUT_MAX_ENTRIES = 10000;
+    private const LOCKOUT_MAX_BYTES = 2097152;
 
     /** @var SurveyAuthSettings Module Settings */
     private $settings;
@@ -496,7 +498,27 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     private function get_endpoint() {
         $endpoint_options = (!empty($GLOBALS["redcap_survey_base_url"]) && $GLOBALS["redcap_base_url"] !== $GLOBALS["redcap_survey_base_url"]);
         $scheme = $_SERVER['REQUEST_SCHEME'] ?? ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http');
-        $request = $this->endpointUrlParts($scheme.'://'.($_SERVER['HTTP_HOST'] ?? '').($_SERVER['REQUEST_URI'] ?? '/'));
+        if (!is_string($scheme) || !in_array(strtolower($scheme), ['http', 'https'], true)) {
+            throw new \RuntimeException('Trusted request scheme is unavailable.');
+        }
+        $scheme = strtolower($scheme);
+        $serverName = $_SERVER['SERVER_NAME'] ?? null;
+        $serverPort = $_SERVER['SERVER_PORT'] ?? ($scheme === 'https' ? 443 : 80);
+        if (!is_string($serverName) || $serverName === '' || !is_scalar($serverPort) ||
+            !ctype_digit((string)$serverPort) || (int)$serverPort < 1 || (int)$serverPort > 65535 ||
+            preg_match('~[\x00-\x20\x7f\\\\/@?#]~', $serverName)) {
+            throw new \RuntimeException('Trusted request endpoint is unavailable.');
+        }
+        if (filter_var($serverName, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $serverName = '['.$serverName.']';
+        } elseif (str_contains($serverName, ':')) {
+            throw new \RuntimeException('Invalid trusted server name.');
+        }
+        $defaultPort = $scheme === 'https' ? 443 : 80;
+        $authority = $serverName.((int)$serverPort === $defaultPort ? '' : ':'.(int)$serverPort);
+        // SERVER_NAME/SERVER_PORT are selected by the trusted web-server route.
+        // HTTP_HOST is client-controlled and must not choose an access policy.
+        $request = $this->endpointUrlParts($scheme.'://'.$authority.($_SERVER['REQUEST_URI'] ?? '/'));
         $bases = ['internal'=>$GLOBALS['redcap_base_url']];
         if ($endpoint_options) $bases['external'] = $GLOBALS['redcap_survey_base_url'];
         $endpoint = null;
@@ -550,6 +572,21 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             }
         }
         return $fields;
+    }
+
+    /** Load a survey instrument's metadata without treating failures as an unprotected survey. */
+    private function getSurveyDataDictionary($projectId, string $instrument): array {
+        $raw = \REDCap::getDataDictionary($projectId, 'json', true, null, $instrument, false);
+        if (!is_string($raw) || $raw === '') throw new \RuntimeException('Survey metadata is unavailable.');
+        $dictionary = json_decode($raw, false, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($dictionary) || !$dictionary) throw new \RuntimeException('Survey metadata is empty.');
+        foreach ($dictionary as $field) {
+            if (!is_object($field) || !is_string($field->field_name ?? null) || $field->field_name === '' ||
+                !is_string($field->field_annotation ?? null)) {
+                throw new \RuntimeException('Survey metadata is invalid.');
+            }
+        }
+        return $dictionary;
     }
 
     #endregion
@@ -643,7 +680,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     private function completeSurveyAuthentication(array $result, $project_id, $instrument, $event_id, $repeat_instance, $record, bool $writeAuthenticationData = true): array {
         do {
             // Determine whether authentication metadata should be written.
-            $dd = json_decode(\REDCap::getDataDictionary($project_id, 'json', true, null, $instrument, false));
+            $dd = $this->getSurveyDataDictionary($project_id, $instrument);
             $taggedFields = $this->getTaggedFields($dd, $project_id, $record, $event_id, $instrument, $repeat_instance);
             if (!count($taggedFields)) {
                 $result["success"] = false;
@@ -837,8 +874,11 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     private function authenticateCustom($username, $password, &$result) {
-        $username = strtolower($username);
-        if (isset($this->settings->customCredentials[$username]) && is_string($password) && hash_equals((string)$this->settings->customCredentials[$username], $password)) {
+        if (!is_string($username) || !is_string($password) || $password === '') return;
+        $username = strtolower(trim($username));
+        if ($username !== '' && isset($this->settings->customCredentials[$username]) &&
+            $this->settings->customCredentials[$username] !== '' &&
+            hash_equals((string)$this->settings->customCredentials[$username], $password)) {
             $result["success"] = true;
             $result["method"] = "Custom";
         }
@@ -1078,6 +1118,10 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     private function checkLockoutStatus($ip) {
         if ($this->settings->lockouttime <= 0 || !$this->settings->lockoutCount) return 0;
         $this->refreshLockoutStatus();
+        return $this->currentLockoutFailures($ip);
+    }
+
+    private function currentLockoutFailures($ip): int {
         $status = $this->settings->lockoutStatus[$ip] ?? null;
         if (!$status || time() >= $status["ts"] + $this->settings->lockouttime * 60) return 0;
         // Checking a blocked request must not increment failures or extend expiry.
@@ -1090,8 +1134,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     private function updateLockoutStatus($ip) {
         if ($this->settings->lockouttime <= 0 || !$this->settings->lockoutCount) return;
         $this->mutateLockoutStatus(function () use ($ip) {
+            if (!isset($this->settings->lockoutStatus[$ip]) &&
+                count($this->settings->lockoutStatus) >= self::LOCKOUT_MAX_ENTRIES) {
+                throw new \RuntimeException('Lockout storage capacity reached.');
+            }
             $this->settings->lockoutStatus[$ip] = [
-                'n' => $this->checkLockoutStatus($ip) + 1,
+                'n' => $this->currentLockoutFailures($ip) + 1,
                 'ts' => time()
             ];
             return true;
@@ -1114,16 +1162,34 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         return $result;
     }
 
-    private function refreshLockoutStatus(): void {
+    private function refreshLockoutStatus(): bool {
         $q = $this->lockoutQuery('SELECT s.value FROM redcap_external_module_settings s
             JOIN redcap_external_modules m ON m.external_module_id=s.external_module_id
             WHERE m.directory_prefix=? AND s.project_id IS NULL AND s.`key`=?',
             [$this->PREFIX, $this->framework->prefixSettingKey('surveyauth_lockouts')]);
         $row = db_fetch_assoc($q);
         if ($row && db_fetch_assoc($q)) throw new \RuntimeException('Duplicate lockout settings.');
-        $status = !$row || $row['value'] === '' ? [] : json_decode($row['value'], true, 512, JSON_THROW_ON_ERROR);
+        $raw = $row['value'] ?? '';
+        if (!is_string($raw) || strlen($raw) > self::LOCKOUT_MAX_BYTES) {
+            throw new \RuntimeException('Invalid lockout storage size.');
+        }
+        $status = $raw === '' ? [] : json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
         if (!is_array($status)) throw new \RuntimeException('Invalid lockout storage.');
         $this->settings->lockoutStatus = $status;
+        $changed = false;
+        $expiresBefore = time() - max(0, (int)ceil($this->settings->lockouttime * 60));
+        foreach ($this->settings->lockoutStatus as $ip => $entry) {
+            if (!is_string($ip) || !is_array($entry) || !isset($entry['n'], $entry['ts']) ||
+                !is_numeric($entry['n']) || !is_numeric($entry['ts']) || (int)$entry['n'] < 1 ||
+                (int)$entry['ts'] <= $expiresBefore) {
+                unset($this->settings->lockoutStatus[$ip]);
+                $changed = true;
+            }
+        }
+        if (count($this->settings->lockoutStatus) > self::LOCKOUT_MAX_ENTRIES) {
+            throw new \RuntimeException('Invalid lockout storage capacity.');
+        }
+        return $changed;
     }
 
     private function mutateLockoutStatus(callable $change): void {
@@ -1133,8 +1199,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             throw new \RuntimeException('Lockout storage is busy. Please try again.');
         }
         try {
-            $this->refreshLockoutStatus();
-            if ($change()) $this->framework->setSystemSetting('surveyauth_lockouts', json_encode($this->settings->lockoutStatus, JSON_THROW_ON_ERROR));
+            $pruned = $this->refreshLockoutStatus();
+            if ($change() || $pruned) {
+                $encoded = json_encode($this->settings->lockoutStatus, JSON_THROW_ON_ERROR);
+                if (strlen($encoded) > self::LOCKOUT_MAX_BYTES) throw new \RuntimeException('Lockout storage capacity reached.');
+                $this->framework->setSystemSetting('surveyauth_lockouts', $encoded);
+            }
         } finally {
             $this->lockoutQuery('SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ?), 256))', [$suffix]);
         }

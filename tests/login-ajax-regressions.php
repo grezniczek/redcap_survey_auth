@@ -10,6 +10,10 @@ namespace ExternalModules {
 namespace {
 ob_start();
 session_save_path(sys_get_temp_dir());
+function filter_tags($value) {
+    $value = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', (string)$value);
+    return preg_replace('/\s+on[a-z]+\s*=\s*(["\']).*?\1/is', ' removed=""', $value);
+}
 require dirname(__DIR__).'/SurveyAuthExternalModule.php';
 define('PAGE', 'surveys/index.php');
 define('APP_PATH_SURVEY_FULL', 'https://survey.example/surveys/');
@@ -18,8 +22,9 @@ class Session {
     static function init($name) { if (session_status() !== PHP_SESSION_ACTIVE) { session_name($name); session_start(); } }
 }
 class REDCap {
-    public static $dictionary=[];
-    static function getDataDictionary(...$args) { return json_encode(self::$dictionary); }
+    public static $dictionary=[['field_name'=>'auth','field_annotation'=>'@SURVEY-AUTH(success=1)']];
+    public static $dictionaryJson=null;
+    static function getDataDictionary(...$args) { return self::$dictionaryJson ?? json_encode(self::$dictionary); }
     static function getRecordIdField(){return 'record_id';}
 }
 class Form {
@@ -68,7 +73,8 @@ $module->framework=new class {
         return new \ArrayIterator([['id'=>'7','title'=>'Fixture']]);
     }
 };
-$_SERVER=['REQUEST_METHOD'=>'POST','HTTP_HOST'=>'survey.example','HTTPS'=>'on','REQUEST_URI'=>'/surveys/'];
+$_SERVER=['REQUEST_METHOD'=>'POST','SERVER_NAME'=>'survey.example','SERVER_PORT'=>'443',
+    'HTTP_HOST'=>'untrusted.example','HTTPS'=>'on','REQUEST_URI'=>'/surveys/'];
 $GLOBALS['redcap_base_url']='https://survey.example/';
 $GLOBALS['redcap_survey_base_url']='https://survey.example/';
 invoke($module,'surveySessionReady');
@@ -153,6 +159,19 @@ foreach ([$oldGrant, $oldGrant+['authentication_values'=>['auth'=>'1']]] as $gra
         check($module->exited && str_contains($html,'Sign in again before starting over'),'Older grant requests authentication before allowing core to erase values');
     }
 }
+foreach (['[]', '{invalid-json', '[{}]'] as $invalidDictionary) {
+    REDCap::$dictionaryJson = $invalidDictionary;
+    $_SERVER['REQUEST_METHOD']='GET';$_GET=['s'=>'public'];$_POST=[];$module->exited=false;
+    http_response_code(200);ob_start();$module->redcap_every_page_before_render(1);$body=ob_get_clean();
+    check($module->exited && http_response_code()===503 && str_contains($body,'authorization could not be checked'),
+        'Empty or malformed survey metadata fails closed');
+}
+REDCap::$dictionaryJson=null;
+REDCap::$dictionary=[['field_name'=>'ordinary','field_annotation'=>'']];
+$_SERVER['REQUEST_METHOD']='GET';$_GET=['s'=>'public'];$_POST=[];$module->exited=false;
+$module->redcap_every_page_before_render(1);
+check(!$module->exited,'A successfully loaded dictionary without the action tag remains unprotected');
+REDCap::$dictionary=[['field_name'=>'auth','field_annotation'=>'@SURVEY-AUTH(success=1)']];
 session_destroy();
 echo "Passed AJAX login errors, retries, grants, replay, resources, and hook routing regressions.\n";
 ob_end_flush();

@@ -29,6 +29,11 @@ foreach (['192.0.2.1','192.0.2.2','192.0.2.1'] as $ip) {
 check($storage['192.0.2.1']['n']===2 && $storage['192.0.2.2']['n']===1,'Stale request snapshots lose neither same-IP increments nor other IPs');
 $settings->lockoutStatus=[];callPrivate($module,'clearLockoutStatus','192.0.2.1');
 check(!isset($storage['192.0.2.1']) && $storage['192.0.2.2']['n']===1,'Successful login clears only its IP using fresh storage');
+$storage['198.51.100.1']=['n'=>7,'ts'=>time()-301];
+$storage['malformed']=['n'=>0,'ts'=>'not-a-time'];
+$settings->lockoutStatus=[];callPrivate($module,'updateLockoutStatus','192.0.2.3');
+check(!isset($storage['198.51.100.1'],$storage['malformed']) && $storage['192.0.2.3']['n']===1,
+    'Mutations prune expired and malformed lockout entries before persisting.');
 $events=[];$acquire=false;$before=$storage;
 try {callPrivate($module,'updateLockoutStatus','192.0.2.2');throw new LogicException('Timeout accepted');}
 catch(RuntimeException $expected) {}
@@ -37,4 +42,22 @@ $events=[];$acquire=true;$failWrite=true;
 try {callPrivate($module,'updateLockoutStatus','192.0.2.2');throw new LogicException('Write failure accepted');}
 catch(RuntimeException $expected) {}
 check($storage===$before && end($events)==='release','Write failure propagates and always releases lock');
-echo "Passed lockout storage freshness, isolation, timeout, and cleanup regressions.\n";
+$failWrite=false;
+$moduleClass=new ReflectionClass(\DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule::class);
+$limit=$moduleClass->getReflectionConstant('LOCKOUT_MAX_ENTRIES')->getValue();
+check($limit===10000 && $moduleClass->getReflectionConstant('LOCKOUT_MAX_BYTES')->getValue()===2097152,
+    'Lockout storage has explicit entry and byte bounds.');
+$storage=[];$now=time();
+for($i=0;$i<$limit;$i++) $storage['198.18.'.intdiv($i,256).'.'.($i%256)]=['n'=>1,'ts'=>$now];
+$events=[];
+try {callPrivate($module,'updateLockoutStatus','203.0.113.9');throw new LogicException('Entry cap accepted');}
+catch(RuntimeException $expected) {}
+check(count($storage)===$limit && !isset($storage['203.0.113.9']) && end($events)==='release' && !in_array('write',$events,true),
+    'A new address cannot grow lockout storage beyond its entry cap.');
+$storage['203.0.113.10']=['n'=>1,'ts'=>$now];
+try {callPrivate($module,'checkLockoutStatus','198.18.0.0');throw new LogicException('Oversized entry set accepted');}
+catch(RuntimeException $expected) {}
+$storage=['oversized-'.str_repeat('x',2097152)=>['n'=>1,'ts'=>$now]];
+try {callPrivate($module,'checkLockoutStatus','192.0.2.1');throw new LogicException('Oversized JSON accepted');}
+catch(RuntimeException $expected) {}
+echo "Passed lockout storage freshness, isolation, pruning, timeout, and capacity regressions.\n";

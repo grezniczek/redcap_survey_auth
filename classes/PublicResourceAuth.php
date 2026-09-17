@@ -45,7 +45,9 @@ trait PublicResourceAuth
             $policy = $this->loadPublicResourcePolicy($resource);
             if ($policy['deny']) {
                 http_response_code(403);
-                print $policy['message'];
+                header('Cache-Control: no-store');
+                header('Referrer-Policy: no-referrer');
+                print htmlspecialchars((string)$policy['message'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 $this->exitAfterHook();
                 return;
             }

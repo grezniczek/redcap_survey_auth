@@ -10,6 +10,7 @@ trait SurveyAuthMlm
 {
     private const MLM_TRANSLATIONS_SETTING = 'surveyauth_mlm_login_translations';
     private const MLM_TRANSLATIONS_VERSION = 1;
+    private const MLM_TRANSLATIONS_MAX_BYTES = 2097152;
 
     /**
      * @return array<string, array{label:string,value:string,html:bool}>
@@ -18,13 +19,13 @@ trait SurveyAuthMlm
     {
         return [
             'login.heading' => ['label' => 'Login heading', 'value' => 'Survey login', 'html' => false],
-            'login.instructions' => ['label' => 'Instructions above the login fields', 'value' => $settings->text, 'html' => true],
-            'login.username_label' => ['label' => 'Username label', 'value' => $settings->usernameLabel, 'html' => false],
-            'login.password_label' => ['label' => 'Password label', 'value' => $settings->passwordLabel, 'html' => false],
-            'login.submit_label' => ['label' => 'Submit button', 'value' => $settings->submitLabel, 'html' => false],
-            'login.failure' => ['label' => 'Invalid-login message', 'value' => $settings->failMsg, 'html' => false],
-            'login.lockout' => ['label' => 'Lockout message', 'value' => $settings->lockoutMsg, 'html' => false],
-            'login.technical_error' => ['label' => 'Technical-error message', 'value' => $settings->errorMsg, 'html' => false],
+            'login.instructions' => ['label' => 'Instructions above the login fields', 'value' => (string)$settings->text, 'html' => true],
+            'login.username_label' => ['label' => 'Username label', 'value' => (string)$settings->usernameLabel, 'html' => false],
+            'login.password_label' => ['label' => 'Password label', 'value' => (string)$settings->passwordLabel, 'html' => false],
+            'login.submit_label' => ['label' => 'Submit button', 'value' => (string)$settings->submitLabel, 'html' => false],
+            'login.failure' => ['label' => 'Invalid-login message', 'value' => (string)$settings->failMsg, 'html' => false],
+            'login.lockout' => ['label' => 'Lockout message', 'value' => (string)$settings->lockoutMsg, 'html' => false],
+            'login.technical_error' => ['label' => 'Technical-error message', 'value' => (string)$settings->errorMsg, 'html' => false],
             'login.cookie_required' => ['label' => 'Cookies-required message', 'value' => 'A survey session is required. Please enable cookies.', 'html' => false],
             'login.expired' => ['label' => 'Expired-login message', 'value' => 'Login expired or invalid. Please reopen the survey.', 'html' => false],
             'login.ajax_error' => ['label' => 'Browser communication error', 'value' => 'Login could not be completed. Please reopen this page and try again.', 'html' => false],
@@ -131,7 +132,7 @@ trait SurveyAuthMlm
     private function surveyMlmReadTranslations(int $projectId, array $allowedKeys): array
     {
         $raw = $this->framework->getProjectSetting(self::MLM_TRANSLATIONS_SETTING, $projectId);
-        if (!is_string($raw) || $raw === '' || strlen($raw) > 524288) return [];
+        if (!is_string($raw) || $raw === '' || strlen($raw) > self::MLM_TRANSLATIONS_MAX_BYTES) return [];
         try {
             $stored = json_decode($raw, true, 128, JSON_THROW_ON_ERROR);
         } catch (\Throwable $e) {
@@ -166,6 +167,24 @@ trait SurveyAuthMlm
         return $reference;
     }
 
+    /** Preserve REDCap-supported formatting while removing active or unsafe markup. */
+    private function surveyMlmSanitizeItem(array $item, string $value): string
+    {
+        return $item['html'] ? \filter_tags($value) : $value;
+    }
+
+    private function surveyMlmEncodeTranslations(array $translations): string
+    {
+        $encoded = json_encode([
+            'version' => self::MLM_TRANSLATIONS_VERSION,
+            'languages' => $translations,
+        ], JSON_THROW_ON_ERROR);
+        if (strlen($encoded) > self::MLM_TRANSLATIONS_MAX_BYTES) {
+            throw new \LengthException('Survey Auth translations exceed the storage limit.');
+        }
+        return $encoded;
+    }
+
     private function surveyMlmErrorKey(string $error, SurveyAuthSettings $settings): ?string
     {
         return match ($error) {
@@ -182,7 +201,7 @@ trait SurveyAuthMlm
     private function surveyMlmLoginPresentation(array $scope, SurveyAuthSettings $settings, string $surveyTitle = ''): array
     {
         $items = $this->surveyMlmLoginItems($settings);
-        $strings = array_map(static fn($item) => $item['value'], $items);
+        $strings = array_map(fn($item) => $this->surveyMlmSanitizeItem($item, $item['value']), $items);
         $default = [
             'enabled' => false,
             'current' => '',
@@ -218,7 +237,8 @@ trait SurveyAuthMlm
         foreach ($languages as $languageId => $language) {
             $resolved = [];
             foreach ($items as $key => $item) {
-                $resolved[$key] = $this->surveyMlmResolveString($translations, $languageId, $fallback, $key, $item['value']);
+                $resolved[$key] = $this->surveyMlmSanitizeItem($item,
+                    $this->surveyMlmResolveString($translations, $languageId, $fallback, $key, $item['value']));
             }
             $translatedSurveyTitle = $surveyTitle;
             $translatedLogoAlt = 'Survey logo';
@@ -300,12 +320,13 @@ trait SurveyAuthMlm
                 }
             }
             try {
-                $this->framework->setProjectSetting(self::MLM_TRANSLATIONS_SETTING, json_encode([
-                    'version' => self::MLM_TRANSLATIONS_VERSION,
-                    'languages' => $saved,
-                ], JSON_THROW_ON_ERROR), $projectId);
+                $encoded = $this->surveyMlmEncodeTranslations($saved);
+                $this->framework->setProjectSetting(self::MLM_TRANSLATIONS_SETTING, $encoded, $projectId);
                 $translations = $saved;
                 $notice = '<div class="alert alert-success">Survey Auth login translations saved.</div>';
+            } catch (\LengthException $e) {
+                http_response_code(422);
+                $notice = '<div class="alert alert-danger">Translations are too large to save.</div>';
             } catch (\Throwable $e) {
                 http_response_code(500);
                 $notice = '<div class="alert alert-danger">Translations could not be saved.</div>';

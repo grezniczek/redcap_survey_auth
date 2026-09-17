@@ -45,6 +45,10 @@ namespace MultiLanguageManagement {
 
 namespace {
     function isnumber($value) { return is_numeric($value); }
+    function filter_tags($value) {
+        $value = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', (string)$value);
+        return preg_replace('/\s+on[a-z]+\s*=\s*(["\']).*?\1/is', ' removed=""', $value);
+    }
     function check($value, $message) { if (!$value) throw new \RuntimeException($message); }
     function invoke($module, $method, ...$args) { return (new \ReflectionMethod($module, $method))->invoke($module, ...$args); }
 
@@ -86,6 +90,8 @@ namespace {
         'de-DE' => [
             'login.heading' => ['value'=>'Anmelden', 'source_hash'=>hash('sha256', $items['login.heading']['value'])],
             'login.username_label' => ['value'=>'Benutzername', 'source_hash'=>hash('sha256', $items['login.username_label']['value'])],
+            'login.instructions' => ['value'=>'<em>Bitte anmelden</em><script>alert(1)</script><img src="x" onerror="alert(2)">',
+                'source_hash'=>hash('sha256', $items['login.instructions']['value'])],
             'not-an-item' => ['value'=>'ignored', 'source_hash'=>str_repeat('0', 64)],
         ],
         'en-US' => [
@@ -99,6 +105,10 @@ namespace {
     check(array_keys($presentation['languages']) === ['de-DE', 'en-US'], 'Only languages active for the protected survey are offered.');
     check($presentation['strings']['login.heading'] === 'Anmelden' &&
         $presentation['strings']['login.username_label'] === 'Benutzername', 'Saved language-specific login strings are used.');
+    check(str_contains($presentation['strings']['login.instructions'], '<em>Bitte anmelden</em>') &&
+        !str_contains($presentation['strings']['login.instructions'], '<script') &&
+        !str_contains($presentation['strings']['login.instructions'], 'onerror'),
+        'HTML-capable MLM strings retain REDCap-supported formatting but remove active markup.');
     check($presentation['languages']['de-DE']['survey_title'] === 'Studienumfrage' &&
         $presentation['languages']['en-US']['survey_title'] === 'Study survey', 'MLM survey titles join the login language catalogue.');
     check($presentation['languages']['de-DE']['survey_logo_alt'] === 'Logo der Studie' &&
@@ -106,6 +116,30 @@ namespace {
         'MLM custom-logo alternative text joins the login language catalogue.');
     check($presentation['strings']['login.password_label'] === 'Pass phrase', 'Missing strings use the configured MLM fallback language.');
     check($presentation['strings']['login.submit_label'] === $items['login.submit_label']['value'], 'Invalid translation entries fail closed to the reference string.');
+
+    // The project-level translation catalogue may legitimately exceed the old
+    // 512 KiB reader limit while staying within the bounded 2 MiB setting.
+    $large = [];
+    for ($i = 0; $i < 24; $i++) {
+        $large['lang-'.$i]['login.instructions'] = [
+            'value'=>str_repeat(chr(65 + ($i % 26)), 24000),
+            'source_hash'=>str_repeat('a', 64),
+        ];
+    }
+    $framework->stored = json_encode(['version'=>1, 'languages'=>$large], JSON_THROW_ON_ERROR);
+    check(strlen($framework->stored) > 524288 && strlen($framework->stored) < 2097152,
+        'The large-catalogue fixture exercises the expanded bound.');
+    check(count(invoke($module, 'surveyMlmReadTranslations', 1, ['login.instructions'=>true])) === 24,
+        'Valid MLM catalogues between 512 KiB and 2 MiB remain readable.');
+    check(invoke($module, 'surveyMlmEncodeTranslations', $large) === $framework->stored,
+        'The writer accepts catalogues within the same bound as the reader.');
+    try {
+        invoke($module, 'surveyMlmEncodeTranslations', [
+            'oversized'=>['login.instructions'=>['value'=>str_repeat('x', 2097152), 'source_hash'=>str_repeat('a', 64)]],
+        ]);
+        throw new \LogicException('Oversized MLM catalogue accepted.');
+    } catch (\LengthException $expected) {
+    }
 
     \MultiLanguageManagement\MultiLanguage::$settings['langs']['de-DE']['dd']['survey-active']['survey'] = false;
     \MultiLanguageManagement\MultiLanguage::$settings['langs']['en-US']['dd']['survey-active']['survey'] = false;

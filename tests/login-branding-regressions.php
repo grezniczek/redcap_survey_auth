@@ -13,7 +13,7 @@ $module->framework = $fixture;
 $_SESSION['redcap_survey_auth_v2']['logins']['branding'] = [
     'scope' => $scope, 'csrf' => 'test-csrf', 'expires' => time()+600,
 ];
-$settings->text = 'Please sign in.';
+$settings->text = '<em>Please sign in.</em><script>alert(1)</script><img src="x" onerror="alert(2)">';
 $settings->usernameLabel = 'Username';
 $settings->passwordLabel = 'Password';
 $settings->submitLabel = 'Sign in';
@@ -52,6 +52,8 @@ checkLoginForm($html);
 check(!empty($fixture->redcapJsLoaded) && !empty($fixture->bootstrapLoaded),
     'The standalone login loads the REDCap Bootstrap assets through framework helpers.');
 check(preg_match('/<h1(?:\s[^>]*)?>A &amp; B<\/h1>/', $html) === 1, 'Survey title is plain, escaped text');
+check(str_contains($html, '<em>Please sign in.</em>') && !str_contains($html, 'alert(1)') && !str_contains($html, 'onerror'),
+    'Configured instruction HTML is filtered through REDCap before rendering.');
 check(str_contains($html, 'src="data:image/png;base64,'), 'Logo type comes from image bytes, not stored MIME');
 check(str_contains($html, '&lt;unsafe-error&gt;'), 'Failed login error remains escaped');
 check(str_contains(renderBranding(['title'=>'Survey', 'hide_title'=>0, 'doc_id'=>null], ''),

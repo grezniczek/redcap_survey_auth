@@ -10,6 +10,10 @@ namespace ExternalModules {
 }
 
 namespace {
+    function filter_tags($value) {
+        $value = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', (string)$value);
+        return preg_replace('/\s+on[a-z]+\s*=\s*(["\']).*?\1/is', ' removed=""', $value);
+    }
     class REDCap {
         public static $testFile = false;
         public static $fileReads = [];
@@ -47,14 +51,52 @@ namespace {
         '@SURVEY-AUTH_other' => 0,
         'prefix@SURVEY-AUTH' => 0,
     ];
-    foreach ($cases as $annotation => $expected) {
-        $dictionary = [(object)['field_name' => 'auth', 'field_annotation' => $annotation]];
-        $fields = $method->invoke($module, $dictionary, 1, null, 2, 'survey', 1);
-        check(count($fields) === $expected, 'Tag detection: '.$annotation);
-        if ($annotation === '@SURVEY-AUTH(success=1)') {
-            check($fields[0]->successValue === '1', 'Parameterized tag retains its settings');
+    $cases['@SURVEY-AUTH(success)'] = 1;
+    set_error_handler(static function($severity, $message, $file, $line) {
+        throw new \ErrorException($message, 0, $severity, $file, $line);
+    });
+    try {
+        foreach ($cases as $annotation => $expected) {
+            $dictionary = [(object)['field_name' => 'auth', 'field_annotation' => $annotation]];
+            $fields = $method->invoke($module, $dictionary, 1, null, 2, 'survey', 1);
+            check(count($fields) === $expected, 'Tag detection: '.$annotation);
+            if ($annotation === '@SURVEY-AUTH(success=1)') {
+                check($fields[0]->successValue === '1', 'Parameterized tag retains its settings');
+            } elseif ($annotation === '@SURVEY-AUTH(success)') {
+                check($fields[0]->successField === null, 'Malformed action-tag parameters are ignored without warnings');
+            }
         }
+    } finally {
+        restore_error_handler();
     }
+
+    $credentialModule = new class extends \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule {
+        public function getSystemSetting($key) { return $key === 'surveyauth_lockouttime' ? '0' : ''; }
+        public function getProjectSetting($key) {
+            return match ($key) {
+                'surveyauth_lockoutcount' => '0',
+                'surveyauth_usecustom' => '1',
+                'surveyauth_custom' => " user :secret:part\r\nblank:\n:password\n:\nvalid:0",
+                default => '',
+            };
+        }
+    };
+    $credentialSettings = new \DE\RUB\SurveyAuthExternalModule\SurveyAuthSettings($credentialModule, 1);
+    check($credentialSettings->customCredentials === ['user'=>'secret:part', 'valid'=>'0'],
+        'Credential parsing rejects empty identities/secrets and preserves exact nonempty passwords');
+    (new \ReflectionProperty(\DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule::class, 'settings'))
+        ->setValue($credentialModule, $credentialSettings);
+    foreach ([['', 'password', false], ['blank', '', false], [' user ', 'secret:part', true], ['valid', '0', true]] as [$user, $password, $expected]) {
+        $result = ['success'=>false];
+        (new \ReflectionMethod($credentialModule, 'authenticateCustom'))->invokeArgs($credentialModule, [$user, $password, &$result]);
+        check($result['success'] === $expected, 'Custom authentication rejects blank credentials and normalizes usernames');
+    }
+
+    $config = json_decode(file_get_contents(dirname(__DIR__).'/config.json'), true, 512, JSON_THROW_ON_ERROR);
+    $projectSettings = array_column($config['project-settings'], null, 'key');
+    check(!empty($projectSettings['surveyauth_useotherldap']['super-users-only']) &&
+        !empty($projectSettings['surveyauth_otherldap']['super-users-only']),
+        'Other LDAP activation and connection secrets are restricted to superusers');
 
     foreach (['GET', 'POST'] as $verb) {
         foreach ([['__dashboard' => 'dashboard', '__report' => '1'],

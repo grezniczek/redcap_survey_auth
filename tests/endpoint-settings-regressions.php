@@ -1,5 +1,6 @@
 <?php
 // Render -> save -> reopen round trips, with in-memory settings and staff-rights fixtures.
+ob_start();
 require __DIR__.'/session-regressions.php';
 define('USERID','editor');
 function isnumber($value) { return is_numeric($value); }
@@ -22,10 +23,21 @@ $module=new class extends \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalMod
     public function escape($value) { return htmlspecialchars($value,ENT_QUOTES); }
     public function initializeJavascriptModuleObject() {}
 };
-$module->framework=new class { public function getJavascriptModuleObjectName() { return 'fixture'; } };
+$module->framework=new class {
+    public function getJavascriptModuleObjectName() { return 'fixture'; }
+    public function query($sql,$params) { return new ArrayIterator([['id'=>2,'title'=>'Fixture']]); }
+};
 $GLOBALS['redcap_base_url']='https://dev-redcap/';
 $GLOBALS['redcap_survey_base_url']='https://dev-surveys/';
 $_SERVER['REQUEST_SCHEME']='https';
+$_SERVER['REQUEST_URI']='/surveys/';
+function setRequestEndpoint($authority,$scheme,$spoofedHost='attacker.invalid') {
+    $parts=parse_url($scheme.'://'.$authority);
+    $_SERVER['SERVER_NAME']=$parts['host'];
+    $_SERVER['SERVER_PORT']=(string)($parts['port'] ?? ($scheme==='https'?443:80));
+    $_SERVER['HTTP_HOST']=$spoofedHost;
+    $_SERVER['REQUEST_SCHEME']=$scheme;
+}
 function selectedEndpoint($module,$type) {
     $_GET=['report_id'=>2,'dash_id'=>2];
     ob_start();callPrivate($module,'add_'.$type.'_settings',1);$html=ob_get_clean();
@@ -42,7 +54,7 @@ foreach(['dashboard'=>'dash','report'=>'report'] as $type=>$prefix) {
     else callPrivate($module,'save_report_settings',1,['report_id'=>2,'report_protected'=>true,'report_denyexternal'=>false,'report_endpoint'=>$selected]);
     check(selectedEndpoint($module,$type)===$endpoint,"$type save and reopen retains $endpoint");
     foreach(['internal'=>'dev-redcap','external'=>'dev-surveys'] as $side=>$host) {
-        $_SERVER['HTTP_HOST']=$host;
+        setRequestEndpoint($host,'https',$side==='internal'?'dev-surveys':'dev-redcap');
         $policy=callPrivate($module,'loadPublicResourcePolicy',['project_id'=>1,'type'=>$type,'id'=>2]);
         check((bool)$policy['protect']===($endpoint==='both' || $endpoint===$side),"$type protects intended $side origin after save");
     }
@@ -68,7 +80,7 @@ $cases = [
 ];
 foreach ($cases as [$internal, $external, $host, $uri, $scheme, $expected]) {
  $GLOBALS['redcap_base_url']=$internal; $GLOBALS['redcap_survey_base_url']=$external;
- $_SERVER['HTTP_HOST']=$host; $_SERVER['REQUEST_URI']=$uri; $_SERVER['REQUEST_SCHEME']=$scheme;
+ setRequestEndpoint($host,$scheme,'spoofed.example'); $_SERVER['REQUEST_URI']=$uri;
  check(callPrivate($module,'get_endpoint')[1]===$expected,'URL components select '.$expected.' for '.$host.$uri);
  foreach (['dashboard'=>'dash', 'report'=>'report'] as $type=>$prefix) {
   foreach (['internal','external','both'] as $selection) {
@@ -86,9 +98,35 @@ $GLOBALS['redcap_survey_base_url']='https://example.test/public/';
 foreach ([['example.test','/staff-other/surveys/'], ['example.test','/unconfigured/'],
  ['example','/staff/surveys/'], ['example.test.evil','/staff/surveys/'],
  ['example.test:8443','/staff/surveys/']] as [$host,$uri]) {
- $_SERVER['HTTP_HOST']=$host; $_SERVER['REQUEST_URI']=$uri; $_SERVER['REQUEST_SCHEME']='https';
+ setRequestEndpoint($host,'https','example.test'); $_SERVER['REQUEST_URI']=$uri;
  $rejected=false;
  try { callPrivate($module,'get_endpoint'); } catch (RuntimeException $e) { $rejected=true; }
  check($rejected,'Unmatched endpoint cannot inherit a potentially unprotected policy');
 }
+// A client-controlled Host header must not select the internal policy.
+$GLOBALS['redcap_base_url']='https://internal.example/';
+$GLOBALS['redcap_survey_base_url']='https://external.example/';
+setRequestEndpoint('external.example','https','internal.example');
+$_SERVER['REQUEST_URI']='/surveys/?__dashboard=fixture';
+check(callPrivate($module,'get_endpoint')[1]==='external','HTTP Host spoofing cannot change the trusted endpoint');
+$previousScheme=$_SERVER['REQUEST_SCHEME'];$_SERVER['REQUEST_SCHEME']=[];$rejected=false;
+try { callPrivate($module,'get_endpoint'); } catch (RuntimeException $e) { $rejected=true; }
+$_SERVER['REQUEST_SCHEME']=$previousScheme;
+check($rejected,'Malformed request scheme fails closed without URL coercion');
+
+// Access-denied messages are project content, not executable markup.
+$module->saved=[
+    'surveyauth_dash_protected_2'=>'1',
+    'surveyauth_dash_endpoint_2'=>'both',
+    'surveyauth_dash_denyexternal_2'=>'1',
+    'surveyauth_dash_noaccessmsg'=>'<img src=x onerror="alert(1)">Denied & unsafe',
+];
+$_GET=['__dashboard'=>'fixture'];
+$_SERVER['REQUEST_METHOD']='GET';
+$module->exited=false;
+ob_start();callPrivate($module,'protectPublicResource',1,'dashboard');$denial=ob_get_clean();
+check($module->exited && http_response_code()===403 &&
+    str_contains($denial,'&lt;img') && str_contains($denial,'Denied &amp; unsafe') && !str_contains($denial,'<img'),
+    'Public-resource denial messages render as escaped text.');
 echo "Passed endpoint path, origin, access-policy, and unmatched-request regressions.\n";
+ob_end_flush();

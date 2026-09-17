@@ -25,8 +25,10 @@ class SurveyAuthInfo
         if (!empty($at_params)) {
             foreach (explode(",", $at_params) as $config) {
                 $config = explode("=", trim($config), 2);
+                if (count($config) !== 2) continue;
                 $key = strtolower(trim($config[0]));
-                $value = $config[1];
+                $value = trim($config[1]);
+                if ($key === '') continue;
                 if (in_array($key, $this->ALLOWEDMAPPINGS, true)) {
                     switch($key) {
                         case "success": {
@@ -37,7 +39,7 @@ class SurveyAuthInfo
                             break;
                         } 
                         default: {
-                            if (in_array($value, $valid_field_names)) {
+                            if (in_array($value, $valid_field_names, true)) {
                                 $this->map[$key] = $value; 
                             }
                             break;

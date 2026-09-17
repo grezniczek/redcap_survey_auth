@@ -48,7 +48,7 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
 - **Allow writing:** When this is enabled, the module can write data (as specified by the action tag parameters) to a (newly created) record before forwarding the user to the survey. Otherwise, the module writes no authentication metadata; REDCap can still save survey responses after authorization. The user is forwarded to the survey after successful authentication. Authentication attempts are logged according to the Logging setting, independently of Allow writing. Survey authentication logs include the submitted username, survey, instance, and outcome.
 
-- **Text displayed above username/password fields:** Optionally enter some prompt that is displayed to the survey user.
+- **Text displayed above username/password fields:** Optionally enter some prompt that is displayed to the survey user. REDCap-supported formatting is retained; unsafe HTML is removed before display. The same filtering applies to MLM translations of this text.
 
 - **Username label:** The label to be displayed for the username text box. Defaults to 'Username'.
 
@@ -70,7 +70,7 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
   - **LDAP:** When REDCap is set to use LDAP, this is used for authentication.
 
-  - **Other LDAP:** Provide any number of LDAP connection info as a JSON array. The order of processing will be as provided in the array. Use the connection and search parameters shown below, adapting the server, service account, base DN, and filters to your directory. The LDAP extension must be available in PHP.
+  - **Other LDAP:** Only REDCap superusers can enable or configure this method because its JSON can contain service-account credentials and controls outbound directory connections. Provide any number of LDAP connection info as a JSON array. The order of processing will be as provided in the array. Use the connection and search parameters shown below, adapting the server, service account, base DN, and filters to your directory. The LDAP extension must be available in PHP.
 
     Example:
 
@@ -102,9 +102,9 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
 - **Use Allowlist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully. Matching is case-insensitive; an enabled empty allowlist denies everyone.
 
-- **Public Dashboard Access Denied Message:** Allows to set a custom message to be displayed when access to a public dashboard is denied.
+- **Public Dashboard Access Denied Message:** Allows a custom plain-text message to be displayed when access to a public dashboard is denied.
 
-- **Public Report Access Denied Message:** Allows to set a custom message to be displayed when access to a public report is denied.
+- **Public Report Access Denied Message:** Allows a custom plain-text message to be displayed when access to a public report is denied.
 
 ### @SURVEY-AUTH Action Tag
 
@@ -136,7 +136,7 @@ The copy icon beside each endpoint option copies that endpoint’s public report
 
 ![Protection of Public Dashboards](images/public-dashboard-protection.png)
 
-Endpoint selection uses the configured scheme, hostname, port, and base path. Internal and external URLs can share a hostname if their base paths differ; the more specific matching path takes precedence. Requests matching neither configured endpoint are denied. Denying external access takes precedence over login protection, including for users who already authenticated.
+Endpoint selection uses the configured scheme, hostname, port, and base path. It derives the current origin from PHP's server configuration rather than the client-controlled `Host` header. Reverse proxies must therefore expose the canonical public server name, port, and scheme to PHP. Internal and external URLs can share a hostname if their base paths differ; the more specific matching path takes precedence. Requests matching neither configured endpoint are denied. Denying external access takes precedence over login protection, including for users who already authenticated.
 
 Dashboard copies inherit the source dashboard's SurveyAuth settings. Copies remain private until those settings are saved, and become public only if REDCap's publication rules permit it. REDCap copies reports as non-public; review protection when making a copied report public.
 

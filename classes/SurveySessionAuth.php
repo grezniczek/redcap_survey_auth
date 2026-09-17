@@ -108,8 +108,8 @@ trait SurveySessionAuth
         $policy = get_object_vars($this->settings);
         // Failure counters change on every failed login and are not policy.
         unset($policy['lockoutStatus'], $policy['blobSecret'], $policy['blobHmac']);
-        $dictionary = \REDCap::getDataDictionary($scope['project_id'], 'json', true, null, $scope['form_name'], false);
-        return hash('sha256', self::POLICY_VERSION.':'.json_encode($policy).$dictionary);
+        $dictionary = $this->getSurveyDataDictionary($scope['project_id'], $scope['form_name']);
+        return hash('sha256', self::POLICY_VERSION.':'.json_encode($policy).json_encode($dictionary, JSON_THROW_ON_ERROR));
     }
 
     private function surveyPath(string $url): string
@@ -174,7 +174,7 @@ trait SurveySessionAuth
                 $_POST['__response_id__'] = $scope['response_id'];
             }
             $this->settings = new SurveyAuthSettings($this, $projectId);
-            $dictionary = json_decode(\REDCap::getDataDictionary($projectId, 'json', true, null, $scope['form_name'], false));
+            $dictionary = $this->getSurveyDataDictionary($projectId, $scope['form_name']);
             if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
             if (!$this->getTaggedFields($dictionary, $projectId, $scope['record'], $scope['event_id'], $scope['form_name'], $scope['instance'])) return;
 
@@ -353,7 +353,7 @@ trait SurveySessionAuth
             $logoAlt = $mlmPresentation['languages'][$mlmPresentation['current']]['survey_logo_alt'] ?? 'Survey logo';
         }
         $surveyTitle = $escape($surveyTitle);
-        $instructions = $strings['login.instructions'] ?? $this->settings->text;
+        $instructions = \filter_tags($strings['login.instructions'] ?? $this->settings->text);
         $usernameLabel = $strings['login.username_label'] ?? $this->settings->usernameLabel;
         $passwordLabel = $strings['login.password_label'] ?? $this->settings->passwordLabel;
         $submitLabel = $strings['login.submit_label'] ?? $this->settings->submitLabel;

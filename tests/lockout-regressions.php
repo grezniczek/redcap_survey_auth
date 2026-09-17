@@ -53,10 +53,11 @@ foreach ([1,2,3,5] as $threshold) {
     }
     $GLOBALS['lockout_test_now']=1300;
     check(callPrivate($module,'checkLockoutStatus',$ip)===0,'Lockout expires exactly at its deadline');
-    check($settings->lockoutStatus===$before && count($module->writes)===$writes,'Expiry check is read-only');
+    check(!isset($settings->lockoutStatus[$ip],$settings->lockoutStatus['192.0.2.2']) && count($module->writes)===$writes,
+        'Expiry checks prune the in-memory snapshot without writing outside a locked mutation');
     $result=$module->authenticatePublicDashboardOrReport('user','correct',1,'Test');
     check($result['success'] && !isset($settings->lockoutStatus[$ip]),"Threshold $threshold permits login after expiry and clears old failures");
-    check(isset($settings->lockoutStatus['192.0.2.2']),'Clearing one IP preserves the other IP');
+    check(!isset($settings->lockoutStatus['192.0.2.2']),'Expired failures for other IPs are pruned as well');
     $settings->lockoutStatus[$ip]=['n'=>$threshold,'ts'=>1000];
     $result=$module->authenticatePublicDashboardOrReport('user','wrong',1,'Test');
     check(!$result['success'] && $settings->lockoutStatus[$ip]===['n'=>1,'ts'=>1300],'A failure after expiry starts a fresh count');

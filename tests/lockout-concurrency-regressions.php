@@ -78,8 +78,8 @@ $before=$storage;$GLOBALS['concurrency_now']=1299;attempt('192.0.2.1');
 check($before===$storage && !$held,'Blocked attempt neither extends the deadline nor leaks a lock');
 $GLOBALS['concurrency_now']=1300;
 $r=attempt('192.0.2.1','correct');
-check($r['success'] && !isset($storage['192.0.2.1']) && isset($storage['192.0.2.2']) && !$held,
-    'Expiry allows success to clear only its own counter');
+check($r['success'] && !isset($storage['192.0.2.1'],$storage['192.0.2.2']) && !$held,
+    'Expiry allows success and prunes all expired counters');
 Authentication::$throw=true;
 try {attempt('192.0.2.3');} catch(Error $expected) {}
 check(!$held,'Unexpected backend errors release the per-IP lock');Authentication::$throw=false;

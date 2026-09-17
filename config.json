@@ -106,7 +106,7 @@
         },
         {
             "key": "surveyauth_methodinfo",
-            "name": "Select the authentication method(s) to use. <i>Table</i> means the REDCap table-based authentication method, <i>LDAP</i> means the LDAP configured in REDCap, <i>Other LDAP</i> lets you specify custom LDAP settings, <i>Custom</i> lets you set a list of username/password pairs. When multiple methods are active at the same time, the order of processing is: Custom &gt; Table &gt; Other LDAP &gt; LDAP, stopping at the first success. When no authentication method is used, all logins will fail.",
+            "name": "Select the authentication method(s) to use. <i>Table</i> means the REDCap table-based authentication method, <i>LDAP</i> means the LDAP configured in REDCap, and <i>Custom</i> lets you set a list of username/password pairs. REDCap admins can also activate <i>Other LDAP</i> and provide custom LDAP settings. When multiple methods are active at the same time, the order of processing is: Custom &gt; Table &gt; Other LDAP &gt; LDAP, stopping at the first success. When no authentication method is used, all logins will fail.",
             "type": "descriptive"
         },
         {
@@ -122,12 +122,14 @@
         {
             "key": "surveyauth_useotherldap",
             "name": "Other LDAP",
-            "type": "checkbox"
+            "type": "checkbox",
+            "super-users-only": true
         },
         {
             "key": "surveyauth_otherldap",
             "name": "LDAP Parameters (JSON, see docs)",
             "type": "textarea",
+            "super-users-only": true,
             "branchingLogic": {
                 "field": "surveyauth_useotherldap",
                 "op": "=",
