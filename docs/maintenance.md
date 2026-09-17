@@ -34,7 +34,9 @@ for test in tests/*regressions.php; do
         *) php "$test" ;;
     esac
 done
-node tests/login-javascript-regressions.js
+for test in tests/*regressions.js; do
+    node "$test"
+done
 ```
 
 These suites do not need a REDCap bootstrap, database, credentials or web server. The maintained suites cover:
@@ -48,6 +50,7 @@ These suites do not need a REDCap bootstrap, database, credentials or web server
 | Endpoint configuration and classification | `endpoint-settings-regressions.php` |
 | Dashboard copying and publication | `dashboard-copy-regressions.php` |
 | Login rendering, AJAX and redirects | `login-branding-regressions.php`, `login-ajax-regressions.php`, `login-tab-csrf-regressions.php`, `login-javascript-regressions.js` |
+| Survey-login MLM selection and editor | `mlm-login-regressions.php`, `mlm-editor-javascript-regressions.js` |
 | Authentication event contents and modes | `authentication-logging-regressions.php` |
 | Metadata saves, Start over and repeat structures | `metadata-write-regressions.php`, `metadata-integrity-regressions.php`, `start-over-regressions.php` |
 | Table login and grant revocation | `table-account-regressions.php` |

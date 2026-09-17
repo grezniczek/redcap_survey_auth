@@ -13,7 +13,7 @@ Survey Auth decides whether a browser session may access a configured survey, pu
 | [PublicResourceAuth.php](../classes/PublicResourceAuth.php) | Dashboard/report identity, endpoint policy, scoped authorization and login completion |
 | [SurveyAuthSettings.php](../classes/SurveyAuthSettings.php) | Configuration defaults and normalized authentication settings |
 | [SurveyAuthInfo.php](../classes/SurveyAuthInfo.php) | Action-tag parameters and metadata mappings |
-| [SurveyAuthMlm.php](../classes/SurveyAuthMlm.php) | Survey-login translations, MLM language eligibility and bounded translation storage |
+| [SurveyAuthMlm.php](../classes/SurveyAuthMlm.php) | Survey-login translations, MLM language eligibility and bounded translation storage; see the [companion integration](../MLM_Companion_Integration.md) |
 | [survey-login.php](../survey-login.php) | Compatibility endpoint for previously opened native login forms |
 | [session-login.php](../html/session-login.php), [survey-login.js](../js/survey-login.js) | Shared AJAX login form, errors and redirect |
 | [config.json](../config.json) | Framework version, endpoint registration, configuration UI and action tag |
