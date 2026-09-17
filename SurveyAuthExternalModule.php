@@ -217,10 +217,11 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $this->protectPublicResource($project_id, 'report');
     }
 
-    private function add_report_settings($project_id) {
-        $report_id = isset($_GET["report_id"]) ? $this->escape($_GET["report_id"]) : "";
-        // Some checks
-        if ($report_id == "" || !\DataExport::validateReportId($project_id, $report_id)) return;
+    private function add_report_settings(int $project_id): void {
+        $reportIdInput = $_GET['report_id'] ?? null;
+        if (!is_scalar($reportIdInput) || !ctype_digit((string)$reportIdInput) || (int)$reportIdInput < 1) return;
+        $report_id = (int)$reportIdInput;
+        if (!\DataExport::validateReportId($project_id, $report_id)) return;
         if (!$this->can_edit_report($project_id, $report_id)) return;
         // Get protection status
         $this->settings = new SurveyAuthSettings($this, $project_id, 0, $report_id);
@@ -300,22 +301,24 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     /**
      * Save protection settings for a report
-     * @param string $project_id The project ID
-     * @param string $payload AJAX payload
-     * @return void 
+     * @param int $project_id The project ID
+     * @param array<string, mixed> $payload AJAX payload
      */
-    private function save_report_settings($project_id, $payload) {
-        $report_id = isset($payload["report_id"]) ? $payload["report_id"] * 1 : 0;
-        if (!$report_id > 0 || !$this->can_edit_report($project_id, $report_id)) return 0;
+    private function save_report_settings(int $project_id, array $payload): int {
+        $reportIdInput = $payload['report_id'] ?? null;
+        if (!is_int($reportIdInput) && (!is_string($reportIdInput) || !ctype_digit($reportIdInput))) return 0;
+        $report_id = (int)$reportIdInput;
+        if ($report_id < 1 || !$this->can_edit_report($project_id, $report_id)) return 0;
         // Store settings
-        $this->setProjectSetting("surveyauth_report_protected_$report_id", $payload["report_protected"] == true);
-        $this->setProjectSetting("surveyauth_report_denyexternal_$report_id", $payload["report_denyexternal"] == true);
-        $endpoint_setting = in_array($payload["report_endpoint"], ["both", "internal", "external"]) ? $payload["report_endpoint"] : "both";
+        $this->setProjectSetting("surveyauth_report_protected_$report_id", ($payload['report_protected'] ?? false) == true);
+        $this->setProjectSetting("surveyauth_report_denyexternal_$report_id", ($payload['report_denyexternal'] ?? false) == true);
+        $endpoint = $payload['report_endpoint'] ?? null;
+        $endpoint_setting = is_string($endpoint) && in_array($endpoint, ['both', 'internal', 'external'], true) ? $endpoint : 'both';
         $this->setProjectSetting("surveyauth_report_endpoint_$report_id", $endpoint_setting);
         return 1;
     }
 
-    private function can_edit_report($project_id, $report_id) {
+    private function can_edit_report(int $project_id, int $report_id): bool {
         // Check user rights
         if (!defined("USERID")) return false;
         $rights = \UserRights::getPrivileges($project_id, USERID)[$project_id][USERID];

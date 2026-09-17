@@ -60,6 +60,17 @@ foreach(['dashboard'=>'dash','report'=>'report'] as $type=>$prefix) {
     }
  }
 }
+$beforeInvalidReportId = $module->saved;
+foreach ([null, '', '2.0', '-2', '2e0', [], 2.0] as $reportId) {
+    $result = callPrivate($module, 'save_report_settings', 1, [
+        'report_id' => $reportId,
+        'report_protected' => true,
+        'report_denyexternal' => true,
+        'report_endpoint' => 'external',
+    ]);
+    check($result === 0 && $module->saved === $beforeInvalidReportId,
+        'Report settings reject malformed report IDs before permissions or writes');
+}
 echo "Passed dashboard/report endpoint render, save, and policy round trips.\n";
 
 // Classify each request by its complete configured origin and base directory.
