@@ -1,4 +1,6 @@
-<?php namespace DE\RUB\SurveyAuthExternalModule;
+<?php 
+
+namespace DE\RUB\SurveyAuthExternalModule;
 
 use ExternalModules\AbstractExternalModule;
 
@@ -6,6 +8,7 @@ require_once "classes/SurveyAuthSettings.php";
 require_once "classes/SurveyAuthInfo.php";
 require_once "classes/SurveySessionAuth.php";
 require_once "classes/PublicResourceAuth.php";
+require_once "classes/SurveyAuthMlm.php";
 
 /**
  * ExternalModule class for survey authentication.
@@ -13,6 +16,7 @@ require_once "classes/PublicResourceAuth.php";
 class SurveyAuthExternalModule extends AbstractExternalModule {
     use SurveySessionAuth;
     use PublicResourceAuth;
+    use SurveyAuthMlm;
     
     public static $ACTIONTAG = "SURVEY-AUTH";
 
@@ -36,6 +40,14 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     function redcap_module_project_enable($version, $project_id) {
         // Also handle settings restored or imported after the system migration.
         $this->migrateProjectSettings($project_id);
+    }
+
+    function redcap_module_link_check_display($project_id, $link) {
+        if ($link === null) return null;
+        // Hide the dedicated editor unless it can affect a protected survey.
+        if (($link['prefixedKey'] ?? null) === $this->PREFIX.'-mlm-login-translations' &&
+            !$this->surveyMlmTranslationEditorAvailable((int)$project_id)) return null;
+        return $link;
     }
 
     private function migrateProjectSettings($projectId): void {

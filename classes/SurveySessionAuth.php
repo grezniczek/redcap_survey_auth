@@ -270,9 +270,8 @@ trait SurveySessionAuth
             while (count($state['logins']) > 16) array_shift($state['logins']);
             if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 http_response_code(403);
-                $this->renderSurveyLogin($id, $metadataRequiresLogin && isset($_GET['__startover'])
-                    ? 'Sign in again before starting over so authentication values can be restored. Then choose Start over again.'
-                    : 'Your submission was not saved. Sign in to reopen the survey. Unsaved answers are not restored automatically; use your browser Back button to recover them if available. Uploaded files may need to be selected again.');
+                $this->renderSurveyLogin($id, '', $metadataRequiresLogin && isset($_GET['__startover'])
+                    ? 'login.start_over' : 'login.unsaved_submission');
             } else {
                 $this->renderSurveyLogin($id);
             }
@@ -322,7 +321,7 @@ trait SurveySessionAuth
         return hash('sha256', json_encode(db_fetch_assoc($q)));
     }
 
-    private function renderSurveyLogin(string $id, string $error = ''): void
+    private function renderSurveyLogin(string $id, string $error = '', string $errorKey = ''): void
     {
         $state =& $this->surveySession();
         $login = $state['logins'][$id];
@@ -345,11 +344,28 @@ trait SurveySessionAuth
             }
         }
         $csrf = $escape($login['csrf']);
-        $instructions = $this->settings->text;
-        $usernameLabel = $escape($this->settings->usernameLabel);
-        $passwordLabel = $escape($this->settings->passwordLabel);
-        $submitLabel = $escape($this->settings->submitLabel);
-        $error = $escape($error);
+        $mlmPresentation = isset($login['resource']) ? null : $this->surveyMlmLoginPresentation($login['scope'], $this->settings);
+        $strings = $mlmPresentation['strings'] ?? [];
+        if ($mlmPresentation !== null) {
+            $loginHeading = $strings['login.heading'] ?? $loginHeading;
+            $error = $errorKey !== '' ? ($strings[$errorKey] ?? $error) : $error;
+        }
+        $instructions = $strings['login.instructions'] ?? $this->settings->text;
+        $usernameLabel = $strings['login.username_label'] ?? $this->settings->usernameLabel;
+        $passwordLabel = $strings['login.password_label'] ?? $this->settings->passwordLabel;
+        $submitLabel = $strings['login.submit_label'] ?? $this->settings->submitLabel;
+        $languageLabel = $strings['login.language_label'] ?? 'Language';
+        $logoAlt = $strings['login.logo_alt'] ?? 'Survey logo';
+        $noJavascript = $strings['login.javascript_required'] ?? 'JavaScript is required to sign in. Please enable JavaScript and reopen this page.';
+        $htmlLang = $mlmPresentation['html_lang'] ?? 'en';
+        $rtl = !empty($mlmPresentation['rtl']);
+        $mlmCatalogue = $mlmPresentation === null ? null : [
+            'current' => $mlmPresentation['current'],
+            'languages' => $mlmPresentation['languages'],
+        ];
+        $mlmCatalogueJson = json_encode($mlmCatalogue,
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($mlmCatalogueJson === false) $mlmCatalogueJson = 'null';
         header('Cache-Control: no-store');
         header('Referrer-Policy: no-referrer');
         ob_start();
@@ -388,13 +404,13 @@ trait SurveySessionAuth
         header('Cache-Control: no-store');
         if (!is_array($payload) || $project_id === null ||
             (string)$project_id !== (string)$this->framework->getProjectId()) {
-            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the resource.'];
+            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the resource.', 'error_key'=>'login.expired'];
         }
         try {
             return $this->processSurveyLogin($payload);
         } catch (\Throwable $e) {
             // Do not expose backend exceptions (or their credential arguments) to AJAX logs.
-            return ['success'=>false, 'error'=>'Login could not be completed. Please contact the administrator.'];
+            return ['success'=>false, 'error'=>'Login could not be completed. Please contact the administrator.', 'error_key'=>'login.ajax_error'];
         }
     }
 
@@ -407,7 +423,7 @@ trait SurveySessionAuth
         if ($result['success']) {
             header('Location: '.$result['redirect'], true, 303);
         } elseif (isset($result['csrf'])) {
-            $this->renderSurveyLogin($payload['context'], $result['error']);
+            $this->renderSurveyLogin($payload['context'], $result['error'], $result['error_key'] ?? '');
         } else {
             http_response_code(403);
             print htmlspecialchars($result['error'], ENT_QUOTES, 'UTF-8');
@@ -419,7 +435,7 @@ trait SurveySessionAuth
         header('Cache-Control: no-store');
         header('Referrer-Policy: no-referrer');
         if (!$this->surveySessionReady()) {
-            return ['success'=>false, 'error'=>'A survey session is required. Please enable cookies.'];
+            return ['success'=>false, 'error'=>'A survey session is required. Please enable cookies.', 'error_key'=>'login.cookie_required'];
         }
         $id = $payload['context'] ?? '';
         $csrf = $payload['csrf'] ?? '';
@@ -427,7 +443,7 @@ trait SurveySessionAuth
         $login = is_string($id) ? ($state['logins'][$id] ?? null) : null;
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$login || !is_string($csrf) ||
             !hash_equals($login['csrf'], $csrf) || (string)$login['scope']['project_id'] !== (string)$this->framework->getProjectId()) {
-            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the survey.'];
+            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the survey.', 'error_key'=>'login.expired'];
         }
         if (isset($login['resource'])) {
             return $this->publicResourceLogin($id, $login, $payload['username'] ?? null, $payload['password'] ?? null);
@@ -441,7 +457,7 @@ trait SurveySessionAuth
         if (!is_string($username) || !is_string($password) ||
             $this->surveyScopeKey($currentScope, $id) !== $this->surveyScopeKey($scope, $id) ||
             !hash_equals($login['revision'], $this->surveyPolicyRevision($scope))) {
-            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the survey.'];
+            return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the survey.', 'error_key'=>'login.expired'];
         }
         if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
         $result = $this->authenticate($username, $password, $scope['project_id'], $scope['form_name'], $scope['event_id'], $scope['instance'], $scope['record'], ($login['purpose'] ?? 'survey') !== 'return');
@@ -449,7 +465,9 @@ trait SurveySessionAuth
         if (!$result['success']) {
             // Refresh session CSRF after each credential attempt.
             $state['logins'][$id]['csrf'] = bin2hex(random_bytes(32));
-            return ['success'=>false, 'error'=>$result['error'] ?: $this->settings->failMsg, 'csrf'=>$state['logins'][$id]['csrf']];
+            $error = $result['error'] ?: $this->settings->failMsg;
+            return ['success'=>false, 'error'=>$error, 'error_key'=>$this->surveyMlmErrorKey($error, $this->settings),
+                'csrf'=>$state['logins'][$id]['csrf']];
         }
         $this->rotateSurveySession();
         unset($state['logins'][$id]);

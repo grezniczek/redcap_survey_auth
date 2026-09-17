@@ -52,5 +52,44 @@ function fixture(ajax) {
     await failed.submit();
     assert.equal(failed.button.disabled, false);
     assert.equal(failed.error.textContent.includes('synthetic transport details'), false);
+
+    const heading = {dataset: {}, textContent: '', getAttribute() { return 'login.heading'; }};
+    const instruction = {dataset: {surveyauthHtml: 'true'}, innerHTML: '', getAttribute() { return 'login.instructions'; }};
+    let changeLanguage;
+    const languageButton = {dataset: {surveyauthLanguage: 'fr-FR'}, setAttribute(name, value) { this[name] = value; },
+        addEventListener(event, callback) { assert.equal(event, 'click'); changeLanguage = callback; }};
+    const languageError = {dataset: {}, textContent: ''};
+    const languageSubmit = {disabled: true};
+    const languageUsername = {value: ''};
+    const languagePassword = {value: '', focus() {}};
+    const languageForm = {dataset: {context: 'context', csrf: 'csrf'},
+        querySelector(selector) { return {'button': languageSubmit, '#username': languageUsername, '#password': languagePassword}[selector]; },
+        addEventListener() {}};
+    const languageDocument = {
+        documentElement: {},
+        getElementById() { return languageError; },
+        querySelectorAll(selector) {
+            if (selector === '[data-surveyauth-i18n]') return [heading, instruction];
+            if (selector === '[data-surveyauth-language]') return [languageButton];
+            return [];
+        }
+    };
+    const remembered = [];
+    const languageContext = vm.createContext({document: languageDocument,
+        window: {location: {href: 'https://survey.example/', origin: 'https://survey.example/'}, setCookie(...args) { remembered.push(args); }}, URL});
+    vm.runInContext(source, languageContext);
+    languageContext.initializeSurveyAuthLogin(languageForm, {ajax: async () => ({success: false})}, {
+        current: 'de-DE',
+        languages: {
+            'de-DE': {html_lang: 'de', rtl: false, strings: {'login.heading': 'Anmelden', 'login.instructions': '<em>Bitte anmelden</em>'}},
+            'fr-FR': {html_lang: 'fr', rtl: false, strings: {'login.heading': 'Connexion', 'login.instructions': '<em>Veuillez vous connecter</em>'}}
+        }
+    });
+    assert.equal(heading.textContent, 'Anmelden');
+    assert.equal(instruction.innerHTML, '<em>Bitte anmelden</em>');
+    changeLanguage();
+    assert.equal(heading.textContent, 'Connexion');
+    assert.equal(languageDocument.documentElement.lang, 'fr');
+    assert.deepEqual(remembered.at(-1), ['redcap-multilanguage-survey', 'fr-FR', 60]);
     console.log('Passed login JavaScript submission, retry, password cleanup, errors, and redirect regressions.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -17,6 +17,17 @@
             "institution": "Yale Center for Clinical Investigation"
         }
     ],
+    "links": {
+        "project": [
+            {
+                "key": "mlm-login-translations",
+                "name": "Survey Auth login translations",
+                "icon": "fas fa-language",
+                "url": "mlm-translations.php",
+                "show-header-and-footer": true
+            }
+        ]
+    },
     "system-settings": [
         {
             "key": "surveyauth_lockouttime",
