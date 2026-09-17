@@ -55,6 +55,8 @@ function fixture(ajax) {
 
     const heading = {dataset: {}, textContent: '', getAttribute() { return 'login.heading'; }};
     const instruction = {dataset: {surveyauthHtml: 'true'}, innerHTML: '', getAttribute() { return 'login.instructions'; }};
+    const surveyTitle = {textContent: ''};
+    const pageTitle = {textContent: ''};
     let changeLanguage;
     const languageButton = {dataset: {surveyauthLanguage: 'fr-FR'}, setAttribute(name, value) { this[name] = value; },
         addEventListener(event, callback) { assert.equal(event, 'click'); changeLanguage = callback; }};
@@ -70,9 +72,11 @@ function fixture(ajax) {
         getElementById() { return languageError; },
         querySelectorAll(selector) {
             if (selector === '[data-surveyauth-i18n]') return [heading, instruction];
+            if (selector === '[data-surveyauth-survey-title]') return [surveyTitle];
             if (selector === '[data-surveyauth-language]') return [languageButton];
             return [];
-        }
+        },
+        querySelector(selector) { return selector === '#survey-auth-page-title' ? pageTitle : null; }
     };
     const remembered = [];
     const languageContext = vm.createContext({document: languageDocument,
@@ -81,14 +85,18 @@ function fixture(ajax) {
     languageContext.initializeSurveyAuthLogin(languageForm, {ajax: async () => ({success: false})}, {
         current: 'de-DE',
         languages: {
-            'de-DE': {html_lang: 'de', rtl: false, strings: {'login.heading': 'Anmelden', 'login.instructions': '<em>Bitte anmelden</em>'}},
-            'fr-FR': {html_lang: 'fr', rtl: false, strings: {'login.heading': 'Connexion', 'login.instructions': '<em>Veuillez vous connecter</em>'}}
+            'de-DE': {html_lang: 'de', rtl: false, survey_title: 'Deutsche Studie', strings: {'login.heading': 'Anmelden', 'login.instructions': '<em>Bitte anmelden</em>'}},
+            'fr-FR': {html_lang: 'fr', rtl: false, survey_title: 'Étude française', strings: {'login.heading': 'Connexion', 'login.instructions': '<em>Veuillez vous connecter</em>'}}
         }
     });
     assert.equal(heading.textContent, 'Anmelden');
     assert.equal(instruction.innerHTML, '<em>Bitte anmelden</em>');
+    assert.equal(surveyTitle.textContent, 'Deutsche Studie');
+    assert.equal(pageTitle.textContent, 'Deutsche Studie — Anmelden');
     changeLanguage();
     assert.equal(heading.textContent, 'Connexion');
+    assert.equal(surveyTitle.textContent, 'Étude française');
+    assert.equal(pageTitle.textContent, 'Étude française — Connexion');
     assert.equal(languageDocument.documentElement.lang, 'fr');
     assert.deepEqual(remembered.at(-1), ['redcap-multilanguage-survey', 'fr-FR', 60]);
     console.log('Passed login JavaScript submission, retry, password cleanup, errors, and redirect regressions.');

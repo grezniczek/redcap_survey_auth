@@ -51,6 +51,17 @@ function initializeSurveyAuthLogin(form, module, translations) {
             if (element.dataset.surveyauthHtml === 'true') element.innerHTML = value;
             else element.textContent = value;
         });
+        if (typeof selected.survey_title === 'string') {
+            document.querySelectorAll('[data-surveyauth-survey-title]').forEach(function(element) {
+                element.textContent = selected.survey_title;
+            });
+            const pageTitle = typeof document.querySelector === 'function' ?
+                document.querySelector('#survey-auth-page-title') : null;
+            if (pageTitle) {
+                const heading = stringFor('login.heading') || pageTitle.textContent;
+                pageTitle.textContent = selected.survey_title === '' ? heading : selected.survey_title + ' — ' + heading;
+            }
+        }
         const errorKey = error.dataset ? error.dataset.surveyauthErrorKey :
             (typeof error.getAttribute === 'function' ? error.getAttribute('data-surveyauth-error-key') : null);
         if (errorKey) setError(errorKey, error.textContent);

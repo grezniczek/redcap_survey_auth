@@ -333,7 +333,7 @@ trait SurveySessionAuth
              LEFT JOIN redcap_edocs_metadata e ON e.doc_id=s.logo AND e.project_id=s.project_id AND e.delete_date IS NULL
              WHERE s.project_id=? AND s.survey_id=?',
             [$login['scope']['project_id'], $login['scope']['survey_id']])) ?: []);
-        $surveyTitle = empty($branding['hide_title']) ? $escape(strip_tags($branding['title'] ?? '')) : '';
+        $surveyTitle = empty($branding['hide_title']) ? strip_tags($branding['title'] ?? '') : '';
         $logoSource = '';
         if (!empty($branding['doc_id'])) {
             // Embed only the configured logo. No unauthenticated attachment route is needed.
@@ -344,12 +344,14 @@ trait SurveySessionAuth
             }
         }
         $csrf = $escape($login['csrf']);
-        $mlmPresentation = isset($login['resource']) ? null : $this->surveyMlmLoginPresentation($login['scope'], $this->settings);
+        $mlmPresentation = isset($login['resource']) ? null : $this->surveyMlmLoginPresentation($login['scope'], $this->settings, $surveyTitle);
         $strings = $mlmPresentation['strings'] ?? [];
         if ($mlmPresentation !== null) {
             $loginHeading = $strings['login.heading'] ?? $loginHeading;
             $error = $errorKey !== '' ? ($strings[$errorKey] ?? $error) : $error;
+            $surveyTitle = $mlmPresentation['languages'][$mlmPresentation['current']]['survey_title'] ?? $surveyTitle;
         }
+        $surveyTitle = $escape($surveyTitle);
         $instructions = $strings['login.instructions'] ?? $this->settings->text;
         $usernameLabel = $strings['login.username_label'] ?? $this->settings->usernameLabel;
         $passwordLabel = $strings['login.password_label'] ?? $this->settings->passwordLabel;

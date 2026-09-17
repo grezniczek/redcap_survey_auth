@@ -181,7 +181,7 @@ trait SurveyAuthMlm
     /**
      * @return array{enabled:bool,current:string,html_lang:string,rtl:bool,strings:array<string,string>,languages:array<string, array<string,mixed>>}
      */
-    private function surveyMlmLoginPresentation(array $scope, SurveyAuthSettings $settings): array
+    private function surveyMlmLoginPresentation(array $scope, SurveyAuthSettings $settings, string $surveyTitle = ''): array
     {
         $items = $this->surveyMlmLoginItems($settings);
         $strings = array_map(static fn($item) => $item['value'], $items);
@@ -222,10 +222,21 @@ trait SurveyAuthMlm
             foreach ($items as $key => $item) {
                 $resolved[$key] = $this->surveyMlmResolveString($translations, $languageId, $fallback, $key, $item['value']);
             }
+            $translatedSurveyTitle = $surveyTitle;
+            if ($surveyTitle !== '') {
+                try {
+                    $titleContext = \REDCap\Context::Builder($context)->lang_id($languageId)->Build();
+                    $title = $mlm::getDDTranslation($titleContext, 'survey-title', $form);
+                    if (is_string($title) && strip_tags($title) !== '') $translatedSurveyTitle = strip_tags($title);
+                } catch (\Throwable $e) {
+                    // The login continues safely with the already escaped reference title.
+                }
+            }
             $catalogue[$languageId] = [
                 'display' => $language['display'],
                 'html_lang' => $language['html_lang'],
                 'rtl' => $language['rtl'],
+                'survey_title' => $translatedSurveyTitle,
                 'strings' => $resolved,
             ];
         }

@@ -2,7 +2,7 @@
 <html lang="<?= $escape($htmlLang) ?>"<?= $rtl ? ' dir="rtl"' : '' ?>>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= $surveyTitle !== '' ? $surveyTitle.' — ' : '' ?><?= $escape($loginHeading) ?></title>
+<title id="survey-auth-page-title"><?= $surveyTitle !== '' ? $surveyTitle.' — ' : '' ?><?= $escape($loginHeading) ?></title>
 <style>
 body { font: 1rem/1.5 system-ui, sans-serif; background: #f4f5f7; color: #222; margin: 0; }
 main { max-width: 28rem; margin: 8vh auto; padding: 2rem; background: white; border-radius: .5rem; }
@@ -17,7 +17,7 @@ button { margin-top: 1.5rem; padding: .7rem 1.5rem; font: inherit; cursor: point
 </style>
 <main>
 <?php if ($logoSource !== ''): ?><img class="survey-logo" src="<?= $logoSource ?>" alt="<?= $escape($logoAlt) ?>"><?php endif; ?>
-<?php if ($surveyTitle !== ''): ?><h1><?= $surveyTitle ?></h1><h2 data-surveyauth-i18n="login.heading"><?= $escape($loginHeading) ?></h2><?php else: ?>
+<?php if ($surveyTitle !== ''): ?><h1 data-surveyauth-survey-title><?= $surveyTitle ?></h1><h2 data-surveyauth-i18n="login.heading"><?= $escape($loginHeading) ?></h2><?php else: ?>
 <h1 data-surveyauth-i18n="login.heading"><?= $escape($loginHeading) ?></h1>
 <?php endif; ?>
 <div data-surveyauth-i18n="login.instructions" data-surveyauth-html="true"><?= $instructions ?></div>

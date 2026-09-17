@@ -6,9 +6,12 @@ namespace ExternalModules {
 
 namespace REDCap {
     class Context {
+        public $languageId;
+        public function __construct($languageId = null) { $this->languageId = $languageId; }
         public static function Builder() { return new ContextBuilder(); }
     }
     class ContextBuilder {
+        private $languageId;
         public function is_survey() { return $this; }
         public function project_id($value) { return $this; }
         public function survey_id($value) { return $this; }
@@ -17,7 +20,8 @@ namespace REDCap {
         public function record($value) { return $this; }
         public function response_id($value) { return $this; }
         public function instance($value) { return $this; }
-        public function Build() { return new Context(); }
+        public function lang_id($value) { $this->languageId = $value; return $this; }
+        public function Build() { return new Context($this->languageId); }
     }
 }
 
@@ -30,6 +34,9 @@ namespace MultiLanguageManagement {
         public static function sortLanguages($languages, $subset = null) { return $subset ?? array_keys($languages); }
         public static function formatLangIdForHtmlTag($languageId) { return strtolower(explode('-', $languageId)[0]); }
         public static function getCurrentLanguage($context) { return self::$current; }
+        public static function getDDTranslation($context, $type, $form) {
+            return ['de-DE'=>'Studienumfrage', 'en-US'=>'Study survey'][$context->languageId] ?? '';
+        }
     }
 }
 
@@ -39,9 +46,9 @@ namespace {
     function invoke($module, $method, ...$args) { return (new \ReflectionMethod($module, $method))->invoke($module, ...$args); }
 
     class Project {
-        public $surveys = [2 => ['form_name'=>'survey']];
-        public $metadata = ['auth' => ['form_name'=>'survey', 'field_annotation'=>'@SURVEY-AUTH']];
         public function __construct($projectId) {}
+        public function getMetadata() { return ['auth' => ['misc'=>'@SURVEY-AUTH']]; }
+        public function getForms() { return ['survey' => ['survey_id'=>2, 'fields'=>['auth'=>[]]]]; }
     }
 
     require dirname(__DIR__).'/SurveyAuthExternalModule.php';
@@ -82,11 +89,13 @@ namespace {
         ],
     ]]);
     $scope = ['project_id'=>1, 'survey_id'=>2, 'event_id'=>3, 'form_name'=>'survey', 'record'=>null, 'response_id'=>null, 'instance'=>1];
-    $presentation = invoke($module, 'surveyMlmLoginPresentation', $scope, $settings);
+    $presentation = invoke($module, 'surveyMlmLoginPresentation', $scope, $settings, 'Reference survey');
     check($presentation['enabled'] && $presentation['current'] === 'de-DE', 'Current MLM survey language selects the login catalogue.');
     check(array_keys($presentation['languages']) === ['de-DE', 'en-US'], 'Only languages active for the protected survey are offered.');
     check($presentation['strings']['login.heading'] === 'Anmelden' &&
         $presentation['strings']['login.username_label'] === 'Benutzername', 'Saved language-specific login strings are used.');
+    check($presentation['languages']['de-DE']['survey_title'] === 'Studienumfrage' &&
+        $presentation['languages']['en-US']['survey_title'] === 'Study survey', 'MLM survey titles join the login language catalogue.');
     check($presentation['strings']['login.password_label'] === 'Pass phrase', 'Missing strings use the configured MLM fallback language.');
     check($presentation['strings']['login.submit_label'] === $items['login.submit_label']['value'], 'Invalid translation entries fail closed to the reference string.');
 

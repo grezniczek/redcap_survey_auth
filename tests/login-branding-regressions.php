@@ -37,7 +37,7 @@ $html = renderBranding(['title'=>'<b>A & B</b>', 'hide_title'=>0, 'doc_id'=>42])
 check($_SESSION['redcap_survey_auth_v2']['logins']['branding']['framework_csrf']===str_repeat('a',80),
     'Login context retains the framework token embedded in that tab');
 checkLoginForm($html);
-check(str_contains($html, '<h1>A &amp; B</h1>'), 'Survey title is plain, escaped text');
+check(preg_match('/<h1(?:\s[^>]*)?>A &amp; B<\/h1>/', $html) === 1, 'Survey title is plain, escaped text');
 check(str_contains($html, 'src="data:image/png;base64,'), 'Logo type comes from image bytes, not stored MIME');
 check(str_contains($html, '&lt;unsafe-error&gt;'), 'Failed login error remains escaped');
 check($fixture->queries[0][1] === [1,2], 'Branding lookup uses the stored project and survey');
