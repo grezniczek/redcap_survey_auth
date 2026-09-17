@@ -1,0 +1,36 @@
+# CITATION.cff
+# See: https://citation-file-format.github.io/
+
+cff-version: 1.2.0
+message: >-
+  If you use Survey Auth in a project that generates a research output,
+  please cite this software in addition to citing REDCap.
+
+type: software
+
+title: "Survey Auth (REDCap External Module)"
+
+abstract: "Survey Auth is a REDCap External Module that adds session-bound authentication to protected surveys and public dashboards and reports. It supports configurable Custom, REDCap Table, and LDAP authentication; scoped, expiring authorization; optional authentication-metadata writes; and project-specific participant-facing login translations when Multi-Language Management is active."
+
+authors:
+  - family-names: "Rezniczek"
+    given-names: "Günther A."
+    orcid: "https://orcid.org/0000-0002-0852-6002"
+    affiliation: "St. Elisabeth Gruppe GmbH, Klinikum der Ruhr-Universität Bochum, Herne, Germany"
+
+keywords:
+  - REDCap
+  - REDCap External Module
+  - survey authentication
+  - access control
+  - public dashboard
+  - public report
+  - clinical research
+  - registry
+
+license: "MIT"
+
+repository-code: "https://github.com/grezniczek/redcap_survey_auth"
+url: "https://github.com/grezniczek/redcap_survey_auth"
+
+doi: "10.5281/zenodo.TBD"

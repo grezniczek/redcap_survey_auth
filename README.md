@@ -1,8 +1,8 @@
-# REDCap Survey Auth
+# Survey Auth
 
-A REDCap External Module that adds authentication to surveys, public dashboards, and public reports.
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.TBD.svg)](https://doi.org/10.5281/zenodo.TBD)
 
-See the [changelog](CHANGELOG.md) for information on release updates. Contributors can find the [implementation guide](docs/implementation.md) and [agent maintenance guide](docs/maintenance.md) in `docs/`.
+Survey Auth is a REDCap External Module that adds session-bound authentication to protected surveys and public dashboards and reports. It supports configurable Custom, REDCap Table, and LDAP authentication; scoped, expiring authorization; optional authentication-metadata writes; and project-specific participant-facing login translations when Multi-Language Management is active.
 
 ## Purpose / Use Case
 
@@ -160,6 +160,20 @@ The former **Success message** (`surveyauth_successmsg`) and **Continue label** 
 
 The earlier token-to-Allow writing migration is retained: a nonempty legacy token enables metadata writing only when Allow writing has no saved value. Explicit choices are preserved, and the legacy token is removed. Rolling back does not restore deleted custom messages or tokens.
 
-## Acknowledgements
+## Release History
 
-OpenAI Codex assisted with code review, implementation, regression and integration testing, and documentation, in collaboration with the module's maintainer.
+See [CHANGELOG.md](CHANGELOG.md) for version history and notable changes.
+
+## How to cite this work
+
+Please use the citation generated from [CITATION.cff](CITATION.cff). On [GitHub](https://github.com/grezniczek/redcap_survey_auth), select **Cite this repository** for ready-to-use citation formats.
+
+---
+
+## AI assistance
+
+Development of this project has made extensive use of AI assistance. AI tools, primarily ChatGPT by OpenAI, have been used throughout the development process, including for discussion and refinement of design and architecture, implementation and refactoring of code, debugging and review, and preparation and revision of documentation.
+
+The extent and nature of this assistance vary across the project and are not attributed to individual commits. AI-generated suggestions and contributions are reviewed, adapted, and integrated as part of the normal development process.
+
+Responsibility for the design, implementation, maintenance, and released software remains entirely with the project maintainer.

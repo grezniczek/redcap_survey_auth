@@ -4,12 +4,7 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
-Unreleased | Harden survey metadata, endpoint classification, custom credentials, action-tag parsing and participant content rendering; distribute lockouts across bounded hash buckets; bound MLM translation storage; restrict Other LDAP configuration to superusers.
-Unreleased | Enforce requested LDAP TLS before binding; protect authentication metadata from survey edits; rotate session IDs at login and invalidate older authorization; serialize password checks per IP to enforce concurrent lockout thresholds.
-Unreleased | Allow multiple login tabs to retain valid, session-bound framework CSRF tokens. Document that core survey completion destroys the shared survey session and requires other tabs to reauthenticate.
-Unreleased | Restore the original authentication field values after an authorized Start over when Allow writing is enabled, including repeating response scopes.
-Unreleased | Login now uses JSMO.ajax through the survey endpoint, supporting survey hosts that block direct external-module pages. Login requires JavaScript; failed attempts update the form and successful attempts redirect.
-v2.2.0  | Security update: Session-scoped survey/dashboard/report authorization replaces URL tokens and daily grants; credentials use a dedicated login endpoint. Corrected endpoint selection, dashboard-copy protection, authentication ordering, lockouts, identity writes, and survey audit details. Removed unused success-message/Continue-label settings and forwarding template; migrated setting cleanup to supported enable hooks, including disabled projects. See README for session lifetimes and configuration behavior.
+v2.2.0  | Harden security, survey metadata, endpoint classification, custom credentials, action-tag parsing and participant content rendering; MLM translation support. See README for session lifetimes and configuration behavior.
 v2.1.1  | Bug fix: Dashboard protection and survey endpoint detection failed in some circumstances.
 v2.1.0  | New feature: Public Reports can be protected with a login. For instances with separate survey endpoint, additonal options are available.
 v2.0.0  | New feature: Public Dashboards can be protected with a login. For instances with separate survey endpoint, additonal options are available.
