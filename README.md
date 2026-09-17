@@ -2,11 +2,11 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.TBD.svg)](https://doi.org/10.5281/zenodo.TBD)
 
-Survey Auth is a REDCap External Module that adds session-bound authentication to protected surveys and public dashboards and reports. It supports configurable Custom, REDCap Table, and LDAP authentication; scoped, expiring authorization; optional authentication-metadata writes; and project-specific participant-facing login translations when Multi-Language Management is active.
+Survey Auth is a REDCap External Module that adds session-bound authentication to protected surveys and public dashboards and reports. It supports Custom credentials, REDCap Table authentication, REDCap-configured LDAP, and superuser-configured Other LDAP; scoped, expiring authorization; optional authentication-metadata writes; and optional Multi-Language Management (MLM) survey-login translations.
 
 ## Purpose / Use Case
 
-In some cases it may be useful to present users with a data entry form or data (public dashboards, public reports), but not confront them with the REDCap user interface, yet still be able to tell who the person entering or viewing the data was. This way, they do not need to be members of the project or even have a REDCap account.
+In some cases it is useful to present a data-entry form, public dashboard, or public report without exposing the REDCap user interface, while still identifying the person entering or viewing data. Those users do not need project membership or a REDCap account.
 
 Possible use cases may be incident reports, internal orders/reports or requests for goods or services, etc.
 
@@ -16,7 +16,7 @@ When protection is enabled for a survey (public or non-public), public dashboard
 
 ![Screenshot](images/surveyauth.png)
 
-Survey/Dashboard/Report users can be authenticated against REDCap Users (table-based authentication), any number of LDAP servers, and/or against a list of username/password entries provided in the module's project configuration.
+Authentication can use project-configured Custom credentials, REDCap's user table, LDAP directories configured in REDCap, and—when enabled by a REDCap superuser—additional project-specific LDAP directories.
 
 ## Requirements
 
@@ -26,8 +26,7 @@ This development checkout targets REDCap master and uses External Modules Framew
 
 Participant login requires JavaScript and uses the EM Framework’s AJAX route under `/surveys/`. Direct `/external_modules/` access is not required on the survey host; the framework’s survey AJAX route must be available.
 
-- Clone this repo into `<redcap-root>/modules/redcap_survey_auth_v<version-number>`, or
-- Obtain this module from the Consortium REDCap Repo via the Control Center.
+- Clone this repository into `<redcap-root>/modules/redcap_survey_auth_v<version-number>`, or obtain it from the Consortium REDCap Repo via the Control Center.
 - Go to Control Center > Technical / Developer Tools > External Modules and enable REDCap Survey Auth.
 - Enable the module for each project that needs survey authentication. Configure at least one authentication method before adding `@SURVEY-AUTH` to a survey instrument or enabling dashboard/report protection. A protected resource with no enabled authentication method rejects every login.
 - For development checkouts, use the directory name `redcap_survey_auth_v9.9.9`.
@@ -36,19 +35,19 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
 ### System-Level Settings
 
-- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism. The project-level Lockout count determines the threshold (default: 3). Failed-attempt counts are shared by client IP across projects using this module and stored in bounded hash buckets. Attempts made while locked out do not extend the deadline; successful authentication clears that IP's failed-attempt count. When lockout time is positive, password checks are serialized per IP across projects and sessions so concurrent attempts cannot exceed the configured threshold. A request that cannot obtain the per-IP lock within five seconds fails without checking its password.
+- **Lockout time:** The time, in whole minutes, that a user is denied further login attempts based on the client IP address reported to PHP. It defaults to 5 minutes; set it to 0 to disable lockouts. The project-level Lockout count determines the threshold (default: 3). Failed-attempt counts are shared by client IP across projects using this module and stored in bounded hash buckets. Attempts made while locked out do not extend the deadline, and successful authentication clears that IP's failed-attempt count. When lockouts are enabled, password checks are serialized per IP across projects and sessions so concurrent attempts cannot exceed the configured threshold. A request that cannot obtain the per-IP lock within five seconds fails without checking its password.
 
 ### Project-Level Settings
 
-- **Logging:** Determines which authentication attempts the module records in the project log. This setting does not disable REDCap's own page-view or data-change logging.
+- **Logging:** Determines which authentication attempts the module records in the project log. Only REDCap superusers can change this setting. It does not disable REDCap's own page-view or data-change logging.
   - _None:_ No module authentication log entries will be produced.
   - _Failed attempts only:_ Log entries will be produced for failed login attempts only.
   - _Successful attempts:_ Log entries will be produced for successful logins.
   - _All:_ Log entries will be produced for both types of events.
 
-- **Allow writing:** When this is enabled, the module can write data (as specified by the action tag parameters) to a (newly created) record before forwarding the user to the survey. Otherwise, the module writes no authentication metadata; REDCap can still save survey responses after authorization. The user is forwarded to the survey after successful authentication. Authentication attempts are logged according to the Logging setting, independently of Allow writing. Survey authentication logs include the submitted username, survey, instance, and outcome.
+- **Allow writing:** When this is enabled, the module writes the authentication values selected by the `@SURVEY-AUTH` parameters to the survey response before forwarding the user to the survey. For a public survey, it creates a response when those values need to be written; for an existing response, it writes to that response. Without a mapped value or `success` parameter, this setting creates no record. When disabled, the module writes no authentication metadata, although REDCap can still save ordinary survey responses after authorization. Authentication attempts are logged according to the Logging setting independently of Allow writing; survey-authentication log entries include the submitted username, survey, instance, and outcome.
 
-- **Text displayed above username/password fields:** Optionally enter some prompt that is displayed to the survey user. REDCap-supported formatting is retained; unsafe HTML is removed before display. The same filtering applies to MLM translations of this text.
+- **Text displayed above username/password fields:** Optionally enter a prompt for the survey user. This is the only participant-facing setting that permits REDCap-supported formatting; `filter_tags()` removes unsafe HTML before display. The same filtering applies to its MLM translations. All other labels and messages are displayed as plain text.
 
 - **Username label:** The label to be displayed for the username text box. Defaults to 'Username'.
 
@@ -56,19 +55,19 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
 - **Submit label:** The label to be displayed on the submit button. Defaults to 'Submit'.
 
-- **Fail message:** A message that is displayed to the user in case the login fails. Defaults to 'Invalid username and/or password or access denied'.
+- **Fail message:** A message displayed when authentication fails or is denied. Defaults to 'Invalid username and/or password or access denied.'.
 
 - **Lockout count:** Sets the number of failed login attempts that will trigger a lockout. Set to 0 to disable lockout. Default = 3.
 
-- **Lockout message:** A message that is displayed to the user in case of too many failed login attempts. Defaults to 'Too many failed login attempts. Please try again later'.
+- **Lockout message:** A message displayed after too many failed login attempts. Defaults to 'Too many failed login attempts. Please try again later.'.
 
-- **Technical error message:** A message that is displayed to the user in case of a technical error that prevents completion of the authentication process. Defaults to 'A technical error prevented completion of the authentication process. Please notify the system administrator'.
+- **Technical error message:** A message displayed when a technical error prevents completion of authentication. Defaults to 'A technical error prevented completion of the authentication process. Please notify the system administrator.'.
 
 - **Authentication methods:** Any of the following methods can be used for authentication. Authentication is attempted in this order: Custom > Table > Other LDAP > LDAP, stopping at the first successful method.
 
   - **Table:** REDCap verifies the username and password against its user table. Suspended accounts are denied.
 
-  - **LDAP:** When REDCap is set to use LDAP, this is used for authentication.
+  - **LDAP:** Uses the LDAP directory configuration supplied by REDCap. If REDCap has more than one configured LDAP directory, they are tried in REDCap's configured order.
 
   - **Other LDAP:** Only REDCap superusers can enable or configure this method because its JSON can contain service-account credentials and controls outbound directory connections. Provide any number of LDAP connection info as a JSON array. The order of processing will be as provided in the array. Use the connection and search parameters shown below, adapting the server, service account, base DN, and filters to your directory. The LDAP extension must be available in PHP.
 
@@ -94,21 +93,23 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
     This example uses LDAP v3 with StartTLS; the server must support it and PHP must trust its certificate. LDAP v3 is also the default when `version` is omitted. If `start_tls` is true, an incompatible protocol setting or failed TLS negotiation rejects authentication before any bind credentials are sent. Use JSON booleans for `start_tls`.
 
-  - **LDAP Attribute mappings:** When LDAP is enabled, custom attribute mappings for email, first, last, and full name can be set. These will be used when attempting to get email and full name of an authenticated user.
+  - **LDAP Attribute mappings:** Available when either LDAP method is enabled. Enter comma-separated attribute names for email, full name, first name, and last name. Email defaults to `email,mail`, first name to `givenName`, last name to `sn`, and full name has no default. The module uses a full-name value when present; otherwise it combines first and last name.
 
   - **Fall back to retrieving user information from REDCap's user table when no values are obtained from LDAP attributes:** After successful LDAP authentication, any missing email or full name is filled from the REDCap user table for the submitted username. Values already obtained from LDAP are retained. This does not authenticate against the REDCap table or create a REDCap account.
 
-  - **Custom:** When selected, custom credentials can be entered into a text box. Type one username-password pair per line, separated by a colon (e.g. `UserXY:secret123`). Usernames are not case-sensitive (passwords are).
+  - **Custom:** When selected, custom credentials can be entered into a text box. Type one nonempty username/password pair per line, with the first colon as the separator (for example, `UserXY:secret123`; later colons remain part of the password). Usernames are case-insensitive; passwords are case-sensitive. Malformed or blank lines are ignored.
 
 - **Use Allowlist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully. Matching is case-insensitive; an enabled empty allowlist denies everyone.
 
-- **Public Dashboard Access Denied Message:** Allows a custom plain-text message to be displayed when access to a public dashboard is denied.
+- **Survey Auth login translations (MLM project link):** The **Survey Auth login translations** link is shown when the project has at least one survey with `@SURVEY-AUTH`, MLM is active for the project, and at least one MLM language is project-active. It lets users with project Design rights translate the Survey Auth survey-login text for project-active languages. At runtime, a language is available only when it is also active for that particular protected survey; survey titles and custom-logo alternative text come from MLM's own survey metadata. Dashboard and report login pages are not translated by this feature. See the [MLM companion integration guide](docs/mlm_integration.md) for details.
 
-- **Public Report Access Denied Message:** Allows a custom plain-text message to be displayed when access to a public report is denied.
+- **Public Dashboard Access Denied Message:** Allows a custom plain-text message when a public dashboard is configured to deny access from the external survey endpoint. Failed dashboard logins use the Fail message instead.
+
+- **Public Report Access Denied Message:** Allows a custom plain-text message when a public report is configured to deny access from the external survey endpoint. Failed report logins use the Fail message instead.
 
 ### @SURVEY-AUTH Action Tag
 
-To enable authentication for a survey, the **@SURVEY-AUTH** action tag must be used on any field of the survey instrument. There must be at most one action tag per instrument.
+To enable authentication for a survey, use the **@SURVEY-AUTH** action tag on any field of the survey instrument. Parameters are optional, and there must be at most one such tag per instrument.
 
 ```ActionTag
 @SURVEY-AUTH(success=value, username=fieldname, email=fieldname, fullname=fieldname, timestamp=fieldname)
