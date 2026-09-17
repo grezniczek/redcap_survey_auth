@@ -36,7 +36,7 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
 ### System-Level Settings
 
-- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism. The project-level Lockout count determines the threshold (default: 3). Failed-attempt counts are shared by client IP across projects using this module. Attempts made while locked out do not extend the deadline; successful authentication clears that IP's failed-attempt count. When lockout time is positive, password checks are serialized per IP across projects and sessions so concurrent attempts cannot exceed the configured threshold. A request that cannot obtain the per-IP lock within five seconds fails without checking its password.
+- **Lockout time:** The time, in (whole) minutes, a user (based on client IP) is denied further login attempts. Defaults to 5 minutes. Explicitly setting this to 0 (zero) will disable the lockout mechanism. The project-level Lockout count determines the threshold (default: 3). Failed-attempt counts are shared by client IP across projects using this module and stored in bounded hash buckets. Attempts made while locked out do not extend the deadline; successful authentication clears that IP's failed-attempt count. When lockout time is positive, password checks are serialized per IP across projects and sessions so concurrent attempts cannot exceed the configured threshold. A request that cannot obtain the per-IP lock within five seconds fails without checking its password.
 
 ### Project-Level Settings
 

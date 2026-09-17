@@ -19,7 +19,7 @@ Read the [implementation guide](implementation.md) and relevant source before ch
 6. Let REDCap own native file handling after authorization. Avoid duplicating its storage and ownership policies in the module.
 7. Preserve dashboard-copy publication ordering and core permissions. Verify core behavior again when its copy controller or transaction handling changes.
 8. Publish identity attributes only from an accepted backend. Preserve exact credential checks, Table-account revalidation, LDAP encoding/casing and backend order.
-9. Serialize authentication admission and bookkeeping per IP. Keep the separate installation-wide counter lock short and out of backend calls. Treat lockout mutations as one synchronized operation. Do not replace primary reads with replica reads or use client-supplied forwarded chains as counter keys.
+9. Serialize authentication admission and bookkeeping per IP. Keep the separate per-bucket counter lock short and out of backend calls. Derive buckets only from validated `REMOTE_ADDR`, treat each bucket mutation as one synchronized operation, and preserve bounded bucket storage. Do not replace primary reads with replica reads or use client-supplied forwarded chains as counter keys.
 10. Keep migrations repeatable and state-based, including disabled projects and retries after partial completion. Preserve explicit settings choices; document destructive cleanup and rollback effects.
 
 ## Standalone regression suite

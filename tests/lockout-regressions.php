@@ -33,10 +33,16 @@ $settings->log='none';
 (new ReflectionProperty(\DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule::class,'settings'))->setValue($module,$settings);
 $_SERVER['REMOTE_ADDR']='192.0.2.1';
 $ip=$_SERVER['REMOTE_ADDR'];
+$bucket=callPrivate($module,'lockoutBucketForIp',$ip);$otherIp=null;
+for($i=1;$i<255;$i++){
+    $candidate='198.51.100.'.$i;
+    if(callPrivate($module,'lockoutBucketForIp',$candidate)===$bucket){$otherIp=$candidate;break;}
+}
+check($otherIp!==null,'Same-bucket fixture address found');
 foreach ([1,2,3,5] as $threshold) {
     $GLOBALS['lockout_test_now']=1000;
     $settings->lockoutCount=$threshold;
-    $settings->lockoutStatus=['192.0.2.2'=>['n'=>1,'ts'=>1000]];
+    $settings->lockoutStatus=[$otherIp=>['n'=>1,'ts'=>1000]];
     $module->writes=[];
     for($i=1;$i<=$threshold;$i++) {
         $result=$module->authenticatePublicDashboardOrReport('user','wrong',1,'Test');
@@ -53,11 +59,11 @@ foreach ([1,2,3,5] as $threshold) {
     }
     $GLOBALS['lockout_test_now']=1300;
     check(callPrivate($module,'checkLockoutStatus',$ip)===0,'Lockout expires exactly at its deadline');
-    check(!isset($settings->lockoutStatus[$ip],$settings->lockoutStatus['192.0.2.2']) && count($module->writes)===$writes,
+    check(!isset($settings->lockoutStatus[$ip],$settings->lockoutStatus[$otherIp]) && count($module->writes)===$writes,
         'Expiry checks prune the in-memory snapshot without writing outside a locked mutation');
     $result=$module->authenticatePublicDashboardOrReport('user','correct',1,'Test');
     check($result['success'] && !isset($settings->lockoutStatus[$ip]),"Threshold $threshold permits login after expiry and clears old failures");
-    check(!isset($settings->lockoutStatus['192.0.2.2']),'Expired failures for other IPs are pruned as well');
+    check(!isset($settings->lockoutStatus[$otherIp]),'Expired failures in the same bucket are pruned as well');
     $settings->lockoutStatus[$ip]=['n'=>$threshold,'ts'=>1000];
     $result=$module->authenticatePublicDashboardOrReport('user','wrong',1,'Test');
     check(!$result['success'] && $settings->lockoutStatus[$ip]===['n'=>1,'ts'=>1300],'A failure after expiry starts a fresh count');

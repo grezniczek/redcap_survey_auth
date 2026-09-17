@@ -71,7 +71,11 @@ namespace {
     }
 
     $credentialModule = new class extends \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule {
-        public function getSystemSetting($key) { return $key === 'surveyauth_lockouttime' ? '0' : ''; }
+        public $systemSettingReads = [];
+        public function getSystemSetting($key) {
+            $this->systemSettingReads[] = $key;
+            return $key === 'surveyauth_lockouttime' ? '0' : '';
+        }
         public function getProjectSetting($key) {
             return match ($key) {
                 'surveyauth_lockoutcount' => '0',
@@ -82,6 +86,8 @@ namespace {
         }
     };
     $credentialSettings = new \DE\RUB\SurveyAuthExternalModule\SurveyAuthSettings($credentialModule, 1);
+    check(!in_array('surveyauth_lockouts', $credentialModule->systemSettingReads, true),
+        'Settings initialization does not eagerly load the legacy installation-wide lockout JSON');
     check($credentialSettings->customCredentials === ['user'=>'secret:part', 'valid'=>'0'],
         'Credential parsing rejects empty identities/secrets and preserves exact nonempty passwords');
     (new \ReflectionProperty(\DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule::class, 'settings'))

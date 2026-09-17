@@ -55,7 +55,9 @@ class SurveyAuthSettings {
         $this->blobHmac = $module->getSystemSetting("surveyauth_blobhmac");
         $lockouttime = $module->getSystemSetting("surveyauth_lockouttime");
         $this->lockouttime = is_numeric($lockouttime) ? $lockouttime * 1 : 5;
-        $this->lockoutStatus = $this->lockouttime === 0 ? array() : json_decode($module->getSystemSetting("surveyauth_lockouts"), true);
+        // The current IP's bucket is loaded from the primary connection only
+        // when lockout state is actually checked or changed.
+        $this->lockoutStatus = array();
         // Only in the context of a project
         if ($this->isProject) {
             $this->log = $this->getValue("surveyauth_log", "all");

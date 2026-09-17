@@ -19,8 +19,10 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     use SurveyAuthMlm;
     
     public static $ACTIONTAG = "SURVEY-AUTH";
-    private const LOCKOUT_MAX_ENTRIES = 10000;
-    private const LOCKOUT_MAX_BYTES = 2097152;
+    private const LOCKOUT_BUCKET_COUNT = 16;
+    private const LOCKOUT_BUCKET_MAX_ENTRIES = 1024;
+    private const LOCKOUT_BUCKET_MAX_BYTES = 262144;
+    private const LOCKOUT_LEGACY_MAX_BYTES = 16777215;
 
     /** @var SurveyAuthSettings Module Settings */
     private $settings;
@@ -28,6 +30,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     #region Hooks
 
     function redcap_module_system_enable($version) {
+        $this->migrateLockoutStorage();
         // Include retained settings for disabled projects, not just enabled projects.
         $keys = array_map(fn($key) => $this->framework->prefixSettingKey($key),
             ['surveyauth_token', 'surveyauth_successmsg', 'surveyauth_continuelabel']);
@@ -62,6 +65,54 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         foreach (['surveyauth_token', 'surveyauth_successmsg', 'surveyauth_continuelabel'] as $key) {
             $this->framework->removeProjectSetting($key, $projectId);
         }
+    }
+
+    /** Move the released single-row lockout store into bounded hash buckets. */
+    private function migrateLockoutStorage(): void {
+        $legacyRaw = $this->framework->getSystemSetting('surveyauth_lockouts');
+        if ($legacyRaw === null) return;
+        $lockouttime = $this->framework->getSystemSetting('surveyauth_lockouttime');
+        $lockouttime = is_numeric($lockouttime) ? $lockouttime * 1 : 5;
+        $legacy = $this->normalizeLockoutStatus(
+            $this->decodeLockoutStatus($legacyRaw, self::LOCKOUT_LEGACY_MAX_BYTES),
+            $lockouttime
+        );
+        $migrated = [];
+        foreach ($legacy as $ip => $entry) {
+            $migrated[$this->lockoutBucketForIp($ip)][$ip] = $entry;
+        }
+        for ($i = 0; $i < self::LOCKOUT_BUCKET_COUNT; $i++) {
+            $bucket = dechex($i);
+            $key = $this->lockoutBucketSettingKey($bucket);
+            $existingRaw = $this->framework->getSystemSetting($key);
+            $existing = $this->normalizeLockoutStatus(
+                $this->decodeLockoutStatus($existingRaw, self::LOCKOUT_BUCKET_MAX_BYTES),
+                $lockouttime,
+                $bucket
+            );
+            foreach ($migrated[$bucket] ?? [] as $ip => $entry) {
+                $current = $existing[$ip] ?? null;
+                if (!$current || $entry['ts'] > $current['ts'] ||
+                    ($entry['ts'] === $current['ts'] && $entry['n'] > $current['n'])) {
+                    $existing[$ip] = $entry;
+                }
+            }
+            uasort($existing, static fn($a, $b) => $b['ts'] <=> $a['ts'] ?: $b['n'] <=> $a['n']);
+            $existing = array_slice($existing, 0, self::LOCKOUT_BUCKET_MAX_ENTRIES, true);
+            $encoded = json_encode($existing, JSON_THROW_ON_ERROR);
+            while (strlen($encoded) > self::LOCKOUT_BUCKET_MAX_BYTES && $existing) {
+                array_pop($existing);
+                $encoded = json_encode($existing, JSON_THROW_ON_ERROR);
+            }
+            if ($existing) {
+                if ($existingRaw !== $encoded) $this->framework->setSystemSetting($key, $encoded);
+            } elseif ($existingRaw !== null) {
+                $this->framework->removeSystemSetting($key);
+            }
+        }
+        // Remove only after every bucket write has succeeded. A failed migration
+        // leaves the source intact so the system-enable hook can retry safely.
+        $this->framework->removeSystemSetting('surveyauth_lockouts');
     }
 
     function redcap_every_page_before_render($project_id) {
@@ -806,6 +857,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     private function authenticateWithLockout(string $username, string $password, array &$result): void {
         $ip = $_SERVER['REMOTE_ADDR'];
+        if (!is_string($ip) || filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            throw new \RuntimeException('Client IP address is unavailable.');
+        }
         $lock = null;
         // Serialize admission, verification and bookkeeping for this IP across
         // projects/sessions. The short storage lock is never held during LDAP.
@@ -1112,12 +1166,50 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     //region Lockout
 
+    private function lockoutBucketForIp(string $ip): string {
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            throw new \RuntimeException('Invalid lockout address.');
+        }
+        // A hexadecimal nibble gives 16 stable, evenly distributed buckets.
+        return dechex(ord(hash('sha256', $ip, true)[0]) >> 4);
+    }
+
+    private function lockoutBucketSettingKey(string $bucket): string {
+        if (!preg_match('/^[0-9a-f]$/', $bucket)) throw new \RuntimeException('Invalid lockout bucket.');
+        return 'surveyauth_lockouts_'.$bucket;
+    }
+
+    private function decodeLockoutStatus($raw, int $maxBytes): array {
+        if ($raw === null || $raw === '') return [];
+        if (!is_string($raw) || strlen($raw) > $maxBytes) {
+            throw new \RuntimeException('Invalid lockout storage size.');
+        }
+        $status = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($status)) throw new \RuntimeException('Invalid lockout storage.');
+        return $status;
+    }
+
+    private function normalizeLockoutStatus(array $status, $lockouttime, ?string $bucket = null): array {
+        $normalized = [];
+        $expiresBefore = time() - max(0, (int)ceil($lockouttime * 60));
+        foreach ($status as $ip => $entry) {
+            if (!is_string($ip) || filter_var($ip, FILTER_VALIDATE_IP) === false || !is_array($entry) ||
+                !isset($entry['n'], $entry['ts']) || !is_int($entry['n']) || !is_int($entry['ts']) ||
+                $entry['n'] < 1 || $entry['ts'] <= $expiresBefore ||
+                ($bucket !== null && $this->lockoutBucketForIp($ip) !== $bucket)) {
+                continue;
+            }
+            $normalized[$ip] = ['n'=>$entry['n'], 'ts'=>$entry['ts']];
+        }
+        return $normalized;
+    }
+
     /**
      * Helper function which checks whether failed login attempts have been recorded for an IP address.
      */
     private function checkLockoutStatus($ip) {
         if ($this->settings->lockouttime <= 0 || !$this->settings->lockoutCount) return 0;
-        $this->refreshLockoutStatus();
+        $this->refreshLockoutStatus($this->lockoutBucketForIp($ip));
         return $this->currentLockoutFailures($ip);
     }
 
@@ -1133,9 +1225,10 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
      */
     private function updateLockoutStatus($ip) {
         if ($this->settings->lockouttime <= 0 || !$this->settings->lockoutCount) return;
-        $this->mutateLockoutStatus(function () use ($ip) {
+        $bucket = $this->lockoutBucketForIp($ip);
+        $this->mutateLockoutStatus($bucket, function () use ($ip) {
             if (!isset($this->settings->lockoutStatus[$ip]) &&
-                count($this->settings->lockoutStatus) >= self::LOCKOUT_MAX_ENTRIES) {
+                count($this->settings->lockoutStatus) >= self::LOCKOUT_BUCKET_MAX_ENTRIES) {
                 throw new \RuntimeException('Lockout storage capacity reached.');
             }
             $this->settings->lockoutStatus[$ip] = [
@@ -1147,7 +1240,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     private function clearLockoutStatus($ip) {
-        $this->mutateLockoutStatus(function () use ($ip) {
+        $bucket = $this->lockoutBucketForIp($ip);
+        $this->mutateLockoutStatus($bucket, function () use ($ip) {
             if (!isset($this->settings->lockoutStatus[$ip])) return false;
             unset($this->settings->lockoutStatus[$ip]);
             return true;
@@ -1162,48 +1256,38 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         return $result;
     }
 
-    private function refreshLockoutStatus(): bool {
+    private function refreshLockoutStatus(string $bucket): bool {
+        $settingKey = $this->lockoutBucketSettingKey($bucket);
         $q = $this->lockoutQuery('SELECT s.value FROM redcap_external_module_settings s
             JOIN redcap_external_modules m ON m.external_module_id=s.external_module_id
             WHERE m.directory_prefix=? AND s.project_id IS NULL AND s.`key`=?',
-            [$this->PREFIX, $this->framework->prefixSettingKey('surveyauth_lockouts')]);
+            [$this->PREFIX, $this->framework->prefixSettingKey($settingKey)]);
         $row = db_fetch_assoc($q);
         if ($row && db_fetch_assoc($q)) throw new \RuntimeException('Duplicate lockout settings.');
-        $raw = $row['value'] ?? '';
-        if (!is_string($raw) || strlen($raw) > self::LOCKOUT_MAX_BYTES) {
-            throw new \RuntimeException('Invalid lockout storage size.');
-        }
-        $status = $raw === '' ? [] : json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
-        if (!is_array($status)) throw new \RuntimeException('Invalid lockout storage.');
-        $this->settings->lockoutStatus = $status;
-        $changed = false;
-        $expiresBefore = time() - max(0, (int)ceil($this->settings->lockouttime * 60));
-        foreach ($this->settings->lockoutStatus as $ip => $entry) {
-            if (!is_string($ip) || !is_array($entry) || !isset($entry['n'], $entry['ts']) ||
-                !is_numeric($entry['n']) || !is_numeric($entry['ts']) || (int)$entry['n'] < 1 ||
-                (int)$entry['ts'] <= $expiresBefore) {
-                unset($this->settings->lockoutStatus[$ip]);
-                $changed = true;
-            }
-        }
-        if (count($this->settings->lockoutStatus) > self::LOCKOUT_MAX_ENTRIES) {
+        $status = $this->decodeLockoutStatus($row['value'] ?? null, self::LOCKOUT_BUCKET_MAX_BYTES);
+        $this->settings->lockoutStatus = $this->normalizeLockoutStatus(
+            $status,
+            $this->settings->lockouttime,
+            $bucket
+        );
+        if (count($this->settings->lockoutStatus) > self::LOCKOUT_BUCKET_MAX_ENTRIES) {
             throw new \RuntimeException('Invalid lockout storage capacity.');
         }
-        return $changed;
+        return $this->settings->lockoutStatus !== $status;
     }
 
-    private function mutateLockoutStatus(callable $change): void {
-        $suffix = ':'.$this->PREFIX.':lockouts';
+    private function mutateLockoutStatus(string $bucket, callable $change): void {
+        $suffix = ':'.$this->PREFIX.':lockouts:'.$bucket;
         $q = $this->lockoutQuery('SELECT GET_LOCK(SHA2(CONCAT(DATABASE(), ?), 256), 5) AS acquired', [$suffix]);
         if ((int)(db_fetch_assoc($q)['acquired'] ?? 0) !== 1) {
             throw new \RuntimeException('Lockout storage is busy. Please try again.');
         }
         try {
-            $pruned = $this->refreshLockoutStatus();
+            $pruned = $this->refreshLockoutStatus($bucket);
             if ($change() || $pruned) {
                 $encoded = json_encode($this->settings->lockoutStatus, JSON_THROW_ON_ERROR);
-                if (strlen($encoded) > self::LOCKOUT_MAX_BYTES) throw new \RuntimeException('Lockout storage capacity reached.');
-                $this->framework->setSystemSetting('surveyauth_lockouts', $encoded);
+                if (strlen($encoded) > self::LOCKOUT_BUCKET_MAX_BYTES) throw new \RuntimeException('Lockout storage capacity reached.');
+                $this->framework->setSystemSetting($this->lockoutBucketSettingKey($bucket), $encoded);
             }
         } finally {
             $this->lockoutQuery('SELECT RELEASE_LOCK(SHA2(CONCAT(DATABASE(), ?), 256))', [$suffix]);
