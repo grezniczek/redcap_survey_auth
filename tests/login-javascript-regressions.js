@@ -60,6 +60,8 @@ function fixture(ajax) {
     let changeLanguage;
     const languageButton = {dataset: {surveyauthLanguage: 'fr-FR'}, setAttribute(name, value) { this[name] = value; },
         addEventListener(event, callback) { assert.equal(event, 'click'); changeLanguage = callback; }};
+    const languageSwitcher = {setAttribute(name, value) { this[name] = value; },
+        getAttribute() { return 'login.language_label'; }};
     const languageError = {dataset: {}, textContent: ''};
     const languageSubmit = {disabled: true};
     const languageUsername = {value: ''};
@@ -72,6 +74,7 @@ function fixture(ajax) {
         getElementById() { return languageError; },
         querySelectorAll(selector) {
             if (selector === '[data-surveyauth-i18n]') return [heading, instruction];
+            if (selector === '[data-surveyauth-i18n-aria-label]') return [languageSwitcher];
             if (selector === '[data-surveyauth-survey-title]') return [surveyTitle];
             if (selector === '[data-surveyauth-language]') return [languageButton];
             return [];
@@ -93,11 +96,13 @@ function fixture(ajax) {
     assert.equal(instruction.innerHTML, '<em>Bitte anmelden</em>');
     assert.equal(surveyTitle.textContent, 'Deutsche Studie');
     assert.equal(pageTitle.textContent, 'Deutsche Studie — Anmelden');
+    assert.equal(languageSwitcher['aria-label'], undefined, 'Missing translation does not alter the initial accessible label.');
     changeLanguage();
     assert.equal(heading.textContent, 'Connexion');
     assert.equal(surveyTitle.textContent, 'Étude française');
     assert.equal(pageTitle.textContent, 'Étude française — Connexion');
     assert.equal(languageDocument.documentElement.lang, 'fr');
+    assert.equal(languageButton.className, 'btn btn-primary btn-sm');
     assert.deepEqual(remembered.at(-1), ['redcap-multilanguage-survey', 'fr-FR', 60]);
     console.log('Passed login JavaScript submission, retry, password cleanup, errors, and redirect regressions.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

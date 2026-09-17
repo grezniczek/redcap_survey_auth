@@ -6,6 +6,8 @@ $fixture = new class extends SurveyAuthQueryFixture {
     public function initializeJavascriptModuleObject() { echo '<script>window.testSurveyAuthModule = {};</script>'; }
     public function getJavascriptModuleObjectName() { return 'window.testSurveyAuthModule'; }
     public function getCSRFToken() { return str_repeat('a',80); }
+    public function loadREDCapJS() { $this->redcapJsLoaded = true; }
+    public function loadBootstrap() { $this->bootstrapLoaded = true; }
 };
 $module->framework = $fixture;
 $_SESSION['redcap_survey_auth_v2']['logins']['branding'] = [
@@ -31,12 +33,22 @@ function checkLoginForm($html) {
     check(str_contains($html, '<noscript>') && str_contains($html, 'type="submit" disabled'),
         'Login stays disabled until JavaScript initializes');
 }
+$loginTemplate = file_get_contents(dirname(__DIR__).'/html/session-login.php');
+check(strpos($loginTemplate, '<h1 data-surveyauth-survey-title>') < strpos($loginTemplate, 'id="survey-auth-languages"') &&
+    strpos($loginTemplate, 'id="survey-auth-languages"') < strpos($loginTemplate, '<h2 data-surveyauth-i18n="login.heading">'),
+    'The MLM language selector is placed between the survey title and login prompt.');
+check(!str_contains($loginTemplate, '<strong data-surveyauth-i18n="login.language_label">') &&
+    str_contains($loginTemplate, 'class="btn <?= $languageId === $mlmCatalogue[\'current\'] ? \'btn-primary\' : \'btn-outline-secondary\' ?> btn-sm"') &&
+    str_contains($loginTemplate, 'class="form-control"') && str_contains($loginTemplate, 'class="btn btn-primary mt-4"'),
+    'Login controls and the MLM selector retain their Bootstrap presentation.');
 REDCap::$testFile = ['text/html', 'untrusted-name.html', base64_decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')];
 $html = renderBranding(['title'=>'<b>A & B</b>', 'hide_title'=>0, 'doc_id'=>42]);
 check($_SESSION['redcap_survey_auth_v2']['logins']['branding']['framework_csrf']===str_repeat('a',80),
     'Login context retains the framework token embedded in that tab');
 checkLoginForm($html);
+check(!empty($fixture->redcapJsLoaded) && !empty($fixture->bootstrapLoaded),
+    'The standalone login loads the REDCap Bootstrap assets through framework helpers.');
 check(preg_match('/<h1(?:\s[^>]*)?>A &amp; B<\/h1>/', $html) === 1, 'Survey title is plain, escaped text');
 check(str_contains($html, 'src="data:image/png;base64,'), 'Logo type comes from image bytes, not stored MIME');
 check(str_contains($html, '&lt;unsafe-error&gt;'), 'Failed login error remains escaped');

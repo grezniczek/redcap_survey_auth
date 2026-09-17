@@ -368,6 +368,18 @@ trait SurveySessionAuth
         $mlmCatalogueJson = json_encode($mlmCatalogue,
             JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE);
         if ($mlmCatalogueJson === false) $mlmCatalogueJson = 'null';
+        // This standalone page has no REDCap header. Use the framework helpers so
+        // its controls match the Bootstrap styles used by the MLM switcher.
+        ob_start();
+        try {
+            $this->framework->loadREDCapJS();
+            $this->framework->loadBootstrap();
+            $redcapAssets = ob_get_contents();
+        } finally {
+            ob_end_clean();
+        }
+        $fontAwesomeCss = defined('APP_PATH_WEBPACK') ? APP_PATH_WEBPACK.'css/fontawesome/css/all.min.css' : '';
+        $multiLanguageCss = defined('APP_PATH_CSS') ? APP_PATH_CSS.'multilanguage-survey.css' : '';
         header('Cache-Control: no-store');
         header('Referrer-Policy: no-referrer');
         ob_start();

@@ -51,6 +51,10 @@ function initializeSurveyAuthLogin(form, module, translations) {
             if (element.dataset.surveyauthHtml === 'true') element.innerHTML = value;
             else element.textContent = value;
         });
+        document.querySelectorAll('[data-surveyauth-i18n-aria-label]').forEach(function(element) {
+            const value = stringFor(element.getAttribute('data-surveyauth-i18n-aria-label'));
+            if (value !== null) element.setAttribute('aria-label', value);
+        });
         if (typeof selected.survey_title === 'string') {
             document.querySelectorAll('[data-surveyauth-survey-title]').forEach(function(element) {
                 element.textContent = selected.survey_title;
@@ -66,7 +70,9 @@ function initializeSurveyAuthLogin(form, module, translations) {
             (typeof error.getAttribute === 'function' ? error.getAttribute('data-surveyauth-error-key') : null);
         if (errorKey) setError(errorKey, error.textContent);
         document.querySelectorAll('[data-surveyauth-language]').forEach(function(control) {
-            control.setAttribute('aria-pressed', control.dataset.surveyauthLanguage === language ? 'true' : 'false');
+            const selected = control.dataset.surveyauthLanguage === language;
+            control.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            control.className = 'btn ' + (selected ? 'btn-primary' : 'btn-outline-secondary') + ' btn-sm';
         });
         if (persist) rememberLanguage(language);
     }

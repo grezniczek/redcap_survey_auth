@@ -55,6 +55,8 @@ $module->framework=new class {
     public function initializeJavascriptModuleObject(){}
     public function getJavascriptModuleObjectName(){return 'window.fixture';}
     public function getCSRFToken(){return str_repeat('a',80);}
+    public function loadREDCapJS(){}
+    public function loadBootstrap(){}
     public function query($sql,$params) {
         if (str_contains($sql,'redcap_surveys s')) return new \ArrayIterator([[
             'project_id'=>1,'survey_id'=>2,'form_name'=>'survey','save_and_return'=>1,'event_id'=>3,
