@@ -8,10 +8,6 @@
  */
 trait SurveyAuthMlm
 {
-    private const MLM_TRANSLATIONS_SETTING = 'surveyauth_mlm_login_translations';
-    private const MLM_TRANSLATIONS_VERSION = 1;
-    private const MLM_TRANSLATIONS_MAX_BYTES = 2097152;
-
     /**
      * @return array<string, array{label:string,value:string,html:bool}>
      */

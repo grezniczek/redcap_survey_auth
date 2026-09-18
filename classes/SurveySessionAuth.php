@@ -4,12 +4,6 @@
 trait SurveySessionAuth
 {
     private $authorizedSurveyRequest;
-    private const SESSION_KEY = 'redcap_survey_auth_v2';
-    // Invalidate grants and login contexts issued before these security rules.
-    private const POLICY_VERSION = 1;
-    private const LOGIN_TTL = 600;
-    private const IDLE_TTL = 1800;
-    private const ABSOLUTE_TTL = 28800;
 
     private function surveySessionReady(): bool
     {

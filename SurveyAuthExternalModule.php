@@ -23,6 +23,15 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     private const LOCKOUT_BUCKET_MAX_ENTRIES = 1024;
     private const LOCKOUT_BUCKET_MAX_BYTES = 262144;
     private const LOCKOUT_LEGACY_MAX_BYTES = 16777215;
+    private const SESSION_KEY = 'redcap_survey_auth_v2';
+    // Invalidate grants and login contexts issued before these security rules.
+    private const POLICY_VERSION = 1;
+    private const LOGIN_TTL = 600;
+    private const IDLE_TTL = 1800;
+    private const ABSOLUTE_TTL = 28800;
+    private const MLM_TRANSLATIONS_SETTING = 'surveyauth_mlm_login_translations';
+    private const MLM_TRANSLATIONS_VERSION = 1;
+    private const MLM_TRANSLATIONS_MAX_BYTES = 2097152;
 
     /** @var SurveyAuthSettings Module Settings */
     private $settings;
@@ -1009,7 +1018,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         $config = $this->mergeLDAPConfig($config);
         $ldap = $search = $read = null;
         try {
-            $ldap = ldap_connect($config['url'], $config['port']);
+            $ldap = ldap_connect($this->ldapConnectionUri($config));
             if ($ldap === false) throw new \RuntimeException('Failed to connect to LDAP server.');
             if (!in_array($config['version'], [2, 3, '2', '3'], true) || !is_bool($config['start_tls']) ||
                 ($config['start_tls'] && (int)$config['version'] !== 3)) {
@@ -1133,6 +1142,36 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $defaultConfig[$k] = $v;
         }
         return $defaultConfig;
+    }
+
+    /**
+     * The one-argument URI form works throughout our PHP 8.1+ support range
+     * and avoids PHP 8.3's deprecation of the separate port argument.
+     */
+    private function ldapConnectionUri(array $config): string {
+        $url = trim((string)$config['url']);
+        if ($url === '') $url = trim((string)$config['host']);
+        if ($url === '') throw new \RuntimeException('LDAP server URL is missing.');
+        if (!preg_match('/^[A-Za-z][A-Za-z0-9+.-]*:\/\//', $url)) $url = 'ldap://'.$url;
+        $parts = parse_url($url);
+        if ($parts === false || !isset($parts['host']) ||
+            !in_array(strtolower((string)($parts['scheme'] ?? '')), ['ldap', 'ldaps'], true)) {
+            throw new \RuntimeException('Invalid LDAP server URL.');
+        }
+        // A port expressly included in the URI is authoritative.
+        if (isset($parts['port'])) return $url;
+        $port = filter_var($config['port'], FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+        if ($port === false) throw new \RuntimeException('Invalid LDAP server port.');
+
+        $authority = '';
+        if (isset($parts['user'])) {
+            $authority = $parts['user'].(isset($parts['pass']) ? ':'.$parts['pass'] : '').'@';
+        }
+        $authority .= $parts['host'].':'.$port;
+        return $parts['scheme'].'://'.$authority.($parts['path'] ?? '').
+            (isset($parts['query']) ? '?'.$parts['query'] : '').
+            (isset($parts['fragment']) ? '#'.$parts['fragment'] : '');
     }
 
     private function checkGroup($ldap, $config, $user) {
