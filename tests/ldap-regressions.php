@@ -14,7 +14,7 @@ class FakeLDAP {
     public static function reset() { self::$calls=self::$results=self::$closed=self::$transport=[]; }
     public static function result($entries) { $r=(object)['entries'=>$entries,'freed'=>false];self::$results[]=$r;return $r; }
 }
-function ldap_connect($url,$port) { FakeLDAP::$calls[]=$url;return (object)['url'=>$url]; }
+function ldap_connect($url) { FakeLDAP::$calls[]=$url;return (object)['url'=>$url]; }
 function ldap_set_option($ldap,$option,$value) { FakeLDAP::$transport[]=['option',$option,$value]; return FakeLDAP::$optionSuccess; }
 function ldap_start_tls($ldap) { FakeLDAP::$transport[]=['tls'];return FakeLDAP::$tlsSuccess; }
 function ldap_get_option($ldap,$option,&$value) { $value=2; return true; }
@@ -42,7 +42,7 @@ class User {
 class Authentication {
     public static function verifyTableUsernamePassword($user,$password) { FakeLDAP::$calls[]='Table'; return FakeLDAP::$tableSuccess; }
 }
-function config($url,$group='') { return ['url'=>$url,'host'=>$url,'port'=>389,'basedn'=>'dc=test','group'=>$group]; }
+function config($host,$group='') { return ['url'=>'ldap://'.$host,'host'=>$host,'port'=>389,'basedn'=>'dc=test','group'=>$group]; }
 function entry($dn,$name='',$email='') { return ['dn'=>$dn,'attrs'=>['cn'=>['count'=>1,0=>$name],'mail'=>['count'=>1,0=>$email]]]; }
 function runBackends() {
     global $module;
@@ -56,22 +56,29 @@ $settings->useCustom=true;$settings->useTable=true;$settings->useOtherLDAP=true;
 $settings->customCredentials=['user'=>'correct'];$settings->fallbackToTableUserInfo=false;
 $settings->ldapMappings=['fullname'=>['cn'],'email'=>['mail'],'firstname'=>[],'lastname'=>[]];
 $settings->otherLDAPConfigs=[config('other')];FakeLDAP::$redcapConfigs=[config('redcap')];
-FakeLDAP::$servers=['other'=>['entries'=>[entry('other','Other','other@example.test')],'accept'=>['other']],
-    'redcap'=>['entries'=>[entry('redcap','REDCap','redcap@example.test')],'accept'=>['redcap']]];
+FakeLDAP::$servers=['ldap://other:389'=>['entries'=>[entry('other','Other','other@example.test')],'accept'=>['other']],
+    'ldap://redcap:389'=>['entries'=>[entry('redcap','REDCap','redcap@example.test')],'accept'=>['redcap']]];
+$ldapConnectionUri = new ReflectionMethod($module, 'ldapConnectionUri');
+check($ldapConnectionUri->invoke($module, config('other')) === 'ldap://other:389',
+    'Configured LDAP port is encoded in the one-argument connection URI');
+check($ldapConnectionUri->invoke($module, array_replace(config('other'), ['url'=>'ldaps://other:636'])) === 'ldaps://other:636',
+    'An explicit LDAP URI port remains authoritative');
+check($ldapConnectionUri->invoke($module, array_replace(config('other'), ['url'=>'ldaps://other/dc=test?uid?sub','port'=>1636])) === 'ldaps://other:1636/dc=test?uid?sub',
+    'LDAP URI path and query survive port encoding');
 $r=runBackends();check($r['method']==='Custom' && !FakeLDAP::$calls,'Custom succeeds before any other backend');
 $settings->customCredentials=[];FakeLDAP::$tableSuccess=true;
 $r=runBackends();check($r['method']==='Table' && FakeLDAP::$calls===['Table'],'Table precedes both LDAP sources');
 FakeLDAP::$tableSuccess=false;
-$r=runBackends();check(str_starts_with($r['method'],'Other LDAP') && $r['email']==='other@example.test' && FakeLDAP::$calls===['Table','other'],'Other LDAP wins before REDCap LDAP');
-FakeLDAP::$servers['other']['accept']=[];
-$r=runBackends();check($r['method']==='LDAP' && $r['email']==='redcap@example.test' && FakeLDAP::$calls===['Table','other','redcap'],'Failed Other LDAP falls through to REDCap');
+$r=runBackends();check(str_starts_with($r['method'],'Other LDAP') && $r['email']==='other@example.test' && FakeLDAP::$calls===['Table','ldap://other:389'],'Other LDAP wins before REDCap LDAP');
+FakeLDAP::$servers['ldap://other:389']['accept']=[];
+$r=runBackends();check($r['method']==='LDAP' && $r['email']==='redcap@example.test' && FakeLDAP::$calls===['Table','ldap://other:389','ldap://redcap:389'],'Failed Other LDAP falls through to REDCap');
 $settings->useTable=$settings->useOtherLDAP=false;
 FakeLDAP::$redcapConfigs=[config('bad'),config('good'),config('late')];
-FakeLDAP::$servers['bad']=['entries'=>[entry('bad','Wrong','wrong@example.test')],'accept'=>[]];
-FakeLDAP::$servers['good']=['entries'=>[entry('good')],'accept'=>['good']];
-$r=runBackends();check($r['success'] && $r['fullname']==='' && $r['email']==='' && FakeLDAP::$calls===['bad','good'],'Rejected directory attributes cannot leak and first accepted directory stops iteration');
+FakeLDAP::$servers['ldap://bad:389']=['entries'=>[entry('bad','Wrong','wrong@example.test')],'accept'=>[]];
+FakeLDAP::$servers['ldap://good:389']=['entries'=>[entry('good')],'accept'=>['good']];
+$r=runBackends();check($r['success'] && $r['fullname']==='' && $r['email']==='' && FakeLDAP::$calls===['ldap://bad:389','ldap://good:389'],'Rejected directory attributes cannot leak and first accepted directory stops iteration');
 FakeLDAP::$redcapConfigs=[config('multi')];
-FakeLDAP::$servers['multi']=['entries'=>[entry('bad','Wrong','wrong@example.test'),entry('good')],'accept'=>['good'],
+FakeLDAP::$servers['ldap://multi:389']=['entries'=>[entry('bad','Wrong','wrong@example.test'),entry('good')],'accept'=>['good'],
     'read'=>[entry('unrelated','Unrelated','unrelated@example.test'),entry('good','Accepted','accepted@example.test')]];
 $r=runBackends();check($r['success'] && $r['fullname']==='Accepted' && $r['email']==='accepted@example.test','Failed entry can advance safely; user-bound attributes must match the accepted DN');
 FakeLDAP::$redcapConfigs=[config('multi','allowed')];
