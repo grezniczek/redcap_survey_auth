@@ -4,6 +4,7 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
+v2.2.0  | Harden security, survey metadata, endpoint classification, custom credentials, action-tag parsing and participant content rendering; MLM translation support. See README for session lifetimes and configuration behavior.
 v2.1.1  | Bug fix: Dashboard protection and survey endpoint detection failed in some circumstances.
 v2.1.0  | New feature: Public Reports can be protected with a login. For instances with separate survey endpoint, additonal options are available.
 v2.0.0  | New feature: Public Dashboards can be protected with a login. For instances with separate survey endpoint, additonal options are available.

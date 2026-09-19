@@ -1,4 +1,11 @@
-.vscode/ export-ignore
-*.code-workspace export-ignore
-.gitattributes export-ignore
-.gitignore export-ignore
+/.vscode export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
+/.github export-ignore
+/.zenodo.json export-ignore
+/SUPPORT.md export-ignore
+/images/qr-paypal.png export-ignore
+/tests export-ignore
+EM.code-workspace export-ignore
+package.json export-ignore
+package-lock.json export-ignore

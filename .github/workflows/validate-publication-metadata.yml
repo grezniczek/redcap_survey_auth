@@ -1,0 +1,474 @@
+name: Validate and publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    outputs:
+      releasable: ${{ steps.tag.outputs.releasable }}
+      prep: ${{ steps.tag.outputs.prep }}
+      version: ${{ steps.tag.outputs.version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Classify tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" == "vPrep" ]]; then
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+            echo "prep=true" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "Zenodo preparatory release tag."
+
+          elif [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+            echo "prep=false" >> "$GITHUB_OUTPUT"
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "Production release tag: $GITHUB_REF_NAME"
+
+          else
+            echo "releasable=false" >> "$GITHUB_OUTPUT"
+            echo "prep=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "Validation-only tag: $GITHUB_REF_NAME"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install metadata validators
+        run: python -m pip install --disable-pip-version-check "cffconvert==2.0.0" "PyYAML>=6,<7"
+
+      - name: Validate CITATION.cff against CFF 1.2
+        run: cffconvert --validate -i CITATION.cff
+
+      - name: Validate REDCap EM publication metadata rules
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          import yaml
+
+          errors = []
+          zenodo_path = Path(".zenodo.json")
+          cff_path = Path("CITATION.cff")
+
+          for path in (zenodo_path, cff_path):
+              if not path.is_file():
+                  errors.append(f"Missing required file: {path}")
+
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              sys.exit(1)
+
+          zenodo_text = zenodo_path.read_text(encoding="utf-8")
+          cff_text = cff_path.read_text(encoding="utf-8")
+
+          if "REPLACE_ME" in zenodo_text or "REPLACE_ME" in cff_text:
+              errors.append("Publication metadata still contains REPLACE_ME placeholders.")
+
+          try:
+              z = json.loads(zenodo_text)
+          except json.JSONDecodeError as exc:
+              errors.append(f".zenodo.json is not valid JSON: {exc}")
+              z = {}
+
+          try:
+              c = yaml.safe_load(cff_text) or {}
+          except yaml.YAMLError as exc:
+              errors.append(f"CITATION.cff is not valid YAML: {exc}")
+              c = {}
+
+          # Release-specific metadata must come from the GitHub release/tag.
+          for key in ("version", "publication_date", "doi"):
+              if key in z:
+                  errors.append(
+                      f".zenodo.json must not contain '{key}'; "
+                      "release-specific metadata comes from GitHub/Zenodo."
+                  )
+
+          for key in ("version", "date-released"):
+              if key in c:
+                  errors.append(
+                      f"CITATION.cff must not contain top-level '{key}'; "
+                      "the Git tag is the version source of truth."
+                  )
+
+          # Fixed structural expectations for public REDCap EMs.
+          if z.get("upload_type") != "software":
+              errors.append(".zenodo.json: upload_type must be 'software'.")
+          if z.get("access_right") != "open":
+              errors.append(".zenodo.json: access_right must be 'open'.")
+          if z.get("language") != "eng":
+              errors.append(".zenodo.json: language must be 'eng'.")
+          if c.get("cff-version") != "1.2.0":
+              errors.append("CITATION.cff: cff-version must be 1.2.0.")
+          if c.get("type") != "software":
+              errors.append("CITATION.cff: type must be 'software'.")
+
+          # Keep duplicated human-maintained metadata synchronized.
+          if str(z.get("title", "")).strip() != str(c.get("title", "")).strip():
+              errors.append("Title differs between .zenodo.json and CITATION.cff.")
+
+          if str(z.get("description", "")).strip() != str(c.get("abstract", "")).strip():
+              errors.append("Description/abstract differs between .zenodo.json and CITATION.cff.")
+
+          z_keywords = {str(x).strip() for x in z.get("keywords", [])}
+          c_keywords = {str(x).strip() for x in c.get("keywords", [])}
+          if z_keywords != c_keywords:
+              errors.append("Keywords differ between .zenodo.json and CITATION.cff.")
+
+          z_license = str(z.get("license", "")).strip().lower()
+          c_license = str(c.get("license", "")).strip().lower()
+          if not z_license or z_license != c_license:
+              errors.append("License differs between .zenodo.json and CITATION.cff.")
+
+          z_creators = z.get("creators", [])
+          c_authors = c.get("authors", [])
+          if not z_creators:
+              errors.append(".zenodo.json must contain at least one creator.")
+          if not c_authors:
+              errors.append("CITATION.cff must contain at least one author.")
+
+          if z_creators and c_authors:
+              z_orcid = str(z_creators[0].get("orcid", "")).strip()
+              c_orcid = str(c_authors[0].get("orcid", "")).strip()
+              c_orcid = c_orcid.removeprefix("https://orcid.org/")
+              if z_orcid != c_orcid:
+                  errors.append("Primary creator ORCID differs between the two metadata files.")
+
+              z_aff = str(z_creators[0].get("affiliation", "")).strip()
+              c_aff = str(c_authors[0].get("affiliation", "")).strip()
+              if z_aff != c_aff:
+                  errors.append("Primary creator affiliation differs between the two metadata files.")
+
+          # The repository belongs in CITATION.cff. Zenodo derives its own
+          # GitHub relation from the GitHub integration, so don't duplicate it
+          # in .zenodo.json related_identifiers.
+          github_repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+          if github_repository:
+              expected_repo = f"https://github.com/{github_repository}"
+              for field in ("repository-code", "url"):
+                  actual = str(c.get(field, "")).rstrip("/")
+                  if actual != expected_repo:
+                      errors.append(
+                          f"CITATION.cff: {field} must be '{expected_repo}' "
+                          f"(found '{actual}')."
+                      )
+
+              for item in z.get("related_identifiers", []) or []:
+                  identifier = str(item.get("identifier", "")).rstrip("/")
+                  if identifier == expected_repo:
+                      errors.append(
+                          ".zenodo.json should not duplicate the GitHub repository "
+                          "in related_identifiers; Zenodo derives that relation automatically."
+                      )
+
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              sys.exit(1)
+
+          print("Publication metadata checks passed.")
+          PY
+
+      - name: Validate Zenodo DOI in citation and READMEs
+        if: steps.tag.outputs.releasable == 'true' && steps.tag.outputs.prep != 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          import yaml
+
+          # -----------------------------
+          # Read DOI from CITATION.cff
+          # -----------------------------
+          cff_path = Path("CITATION.cff")
+      
+          if not cff_path.is_file():
+              print("::error::CITATION.cff not found.")
+              sys.exit(1)
+
+          cff = yaml.safe_load(cff_path.read_text(encoding="utf-8"))
+
+          doi = str(cff.get("doi", "")).strip()
+
+          if not doi:
+              print(
+                  "::error::CITATION.cff must contain a DOI "
+                  "for every real release."
+              )
+              sys.exit(1)
+
+          # Normalize optional URL form.
+          doi = re.sub(
+              r"^https?://(?:dx\.)?doi\.org/",
+              "",
+              doi,
+              flags=re.IGNORECASE,
+          )
+
+          if not re.fullmatch(
+              r"10\.5281/zenodo\.\d+",
+              doi,
+              flags=re.IGNORECASE,
+          ):
+              print(
+                  f"::error::CITATION.cff DOI is not a Zenodo DOI: {doi}"
+              )
+              sys.exit(1)
+
+          # -----------------------------
+          # Find README variants
+          # -----------------------------
+          readmes = sorted(
+              p for p in Path(".").glob("README*.md")
+              if p.is_file()
+          )
+
+          if not readmes:
+              print("::error::No README*.md files found.")
+              sys.exit(1)
+      
+          # Match the DOI used in the Zenodo DOI badge.
+          badge_re = re.compile(
+              r"\[!\[DOI\]\("
+              r"https://zenodo\.org/badge/[^)\s]+\.svg"
+              r"\)\]\("
+              r"https://doi\.org/(10\.5281/zenodo\.\d+)"
+              r"\)",
+              flags=re.IGNORECASE,
+          )
+          failed = False
+
+          for path in readmes:
+              text = path.read_text(encoding="utf-8")
+              badges = badge_re.findall(text)
+
+              if not badges:
+                  print(
+                      f"::error file={path}::No Zenodo DOI badge found."
+                  )
+                  failed = True
+                  continue
+      
+              unique_badges = {
+                  badge.lower() for badge in badges
+              }
+
+              if len(unique_badges) != 1:
+                  print(
+                      f"::error file={path}::Multiple different Zenodo "
+                      f"DOI badges found: {sorted(unique_badges)}"
+                  )
+                  failed = True
+                  continue
+
+              readme_doi = next(iter(unique_badges))
+
+              if readme_doi != doi.lower():
+                  print(
+                      f"::error file={path}::Zenodo DOI badge targets "
+                      f"{readme_doi}, but CITATION.cff specifies {doi}."
+                  )
+                  failed = True
+              else:
+                  print(f"{path}: DOI OK ({doi})")
+
+          if failed:
+              sys.exit(1)
+
+          print(
+              f"All {len(readmes)} README file(s) use the "
+              f"CITATION.cff DOI: {doi}"
+          )
+          PY
+
+      - name: Validate CHANGELOG release entry
+        if: steps.tag.outputs.releasable == 'true' && steps.tag.outputs.prep != 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          path = Path("CHANGELOG.md")
+
+          if not path.is_file():
+              print("::error::CHANGELOG.md not found.")
+              sys.exit(1)
+
+          matches = []
+
+          for lineno, line in enumerate(
+              path.read_text(encoding="utf-8").splitlines(), 1
+          ):
+              # Expected Markdown table:
+              # | version | description |
+              m = re.match(
+                  r"^\s*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$",
+                  line
+              )
+
+              if not m:
+                  continue
+
+              row_version = m.group(1).strip().strip("`")
+              description = m.group(2).strip()
+
+              if row_version in (version, f"v{version}"):
+                  matches.append((lineno, description))
+
+          if not matches:
+              print(
+                  f"::error::CHANGELOG.md has no entry for version {version}."
+              )
+              sys.exit(1)
+
+          if len(matches) > 1:
+              lines = ", ".join(str(x[0]) for x in matches)
+              print(
+                  f"::error::CHANGELOG.md contains multiple entries "
+                  f"for version {version} (lines {lines})."
+              )
+              sys.exit(1)
+
+          lineno, description = matches[0]
+
+          if not description:
+              print(
+                  f"::error::CHANGELOG entry for {version} "
+                  f"has an empty description."
+              )
+              sys.exit(1)
+
+          print(
+              f"CHANGELOG entry for {version} found on line {lineno}."
+          )
+          PY
+
+
+  release:
+    name: Create GitHub release
+
+    needs: validate
+
+    if: needs.validate.outputs.releasable == 'true'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out tagged release
+        uses: actions/checkout@v7
+
+      - name: Extract release information
+        id: release_info
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          PREP: ${{ needs.validate.outputs.prep }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          # REDCap EM name is authoritative.
+          config = json.loads(
+              Path("config.json").read_text(encoding="utf-8")
+          )
+          name = config["name"].strip()
+
+          prep = os.environ["PREP"] == "true"
+
+          if prep:
+              title = f"{name} vPrep"
+              description = """Preparatory release used solely to initialize the Zenodo record and obtain the version-independent Concept DOI. This is not a software release and should not be cited or used."""
+          else:
+              version = os.environ["VERSION"]
+              tag = f"v{version}"
+
+              # Extract release description from CHANGELOG.
+              matches = []
+
+              for line in Path("CHANGELOG.md").read_text(
+                  encoding="utf-8"
+              ).splitlines():
+
+                  m = re.match(
+                      r"^\s*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$",
+                      line
+                  )
+
+                  if not m:
+                      continue
+
+                  row_version = m.group(1).strip().strip("`")
+
+                  if row_version in (version, tag):
+                      matches.append(m.group(2).strip())
+
+              if len(matches) != 1:
+                  print(
+                      f"::error::Expected exactly one CHANGELOG "
+                      f"entry for {version}."
+                  )
+                  sys.exit(1)
+
+              description = matches[0]
+              title = f"{name} {tag}"
+
+          Path("release-notes.md").write_text(
+              description + "\n",
+              encoding="utf-8"
+          )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"title={title}\n")
+
+          print(f"Release title: {title}")
+          print("Release notes:")
+          print(description)
+          PY
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TITLE: ${{ steps.release_info.outputs.title }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "$RELEASE_TITLE" \
+            --notes-file release-notes.md

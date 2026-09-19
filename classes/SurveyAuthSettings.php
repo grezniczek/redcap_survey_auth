@@ -14,9 +14,7 @@ class SurveyAuthSettings {
     public $lockoutCount = 3;
     public $lockoutMsg;
     public $lockouttime;
-    public $successMsg;
     public $errorMsg;
-    public $continueLabel;
     public $blobSecret;
     public $blobHmac;
     public $isProject;
@@ -57,7 +55,9 @@ class SurveyAuthSettings {
         $this->blobHmac = $module->getSystemSetting("surveyauth_blobhmac");
         $lockouttime = $module->getSystemSetting("surveyauth_lockouttime");
         $this->lockouttime = is_numeric($lockouttime) ? $lockouttime * 1 : 5;
-        $this->lockoutStatus = $this->lockouttime === 0 ? array() : json_decode($module->getSystemSetting("surveyauth_lockouts"), true);
+        // The current IP's bucket is loaded from the primary connection only
+        // when lockout state is actually checked or changed.
+        $this->lockoutStatus = array();
         // Only in the context of a project
         if ($this->isProject) {
             $this->log = $this->getValue("surveyauth_log", "all");
@@ -76,9 +76,7 @@ class SurveyAuthSettings {
                 $this->lockoutCount = $lockoutCount > 0 ? $lockoutCount : 3;
             }
             $this->lockoutMsg = $this->getValue("surveyauth_lockoutmsg", "Too many failed login attempts. Please try again later.");
-            $this->successMsg = $this->getValue("surveyauth_successmsg", "Authentication was successful. You will be automatically forwarded to the survey momentarily.");
             $this->errorMsg = $this->getValue("surveyauth_errormsg", "A technical error prevented completion of the authentication process. Please notify the system administrator.");
-            $this->continueLabel = $this->getValue("surveyauth_continuelabel", "Continue to Survey");
             $this->useTable = $this->getValue("surveyauth_usetable", false);
             $this->useLDAP = $this->getValue("surveyauth_useldap", false);
             $this->useOtherLDAP = $this->getValue("surveyauth_useotherldap", false);
@@ -129,12 +127,14 @@ class SurveyAuthSettings {
         $creds = array();
         $lines = explode("\n", $raw);
         foreach ($lines as $line) {
-            $parts = explode(":", $line);
-            if (count($parts) > 1) {
-                $username = strtolower($parts[0]);
-                $password = join(":", array_slice($parts, 1));
-                $creds[$username] = $password;
-            }
+            $parts = explode(":", $line, 2);
+            if (count($parts) !== 2) continue;
+            $username = strtolower(trim($parts[0]));
+            // Remove the line ending from CRLF settings without otherwise
+            // changing the exact, case-sensitive password.
+            $password = rtrim($parts[1], "\r");
+            if ($username === '' || $password === '') continue;
+            $creds[$username] = $password;
         }
         return $creds;
     }
