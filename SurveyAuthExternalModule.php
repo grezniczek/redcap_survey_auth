@@ -213,7 +213,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         // A public start has a session-bound flow ID to isolate concurrent starts.
         // It carries no authority without the grant in this browser's session.
         if ($this->authorizedSurveyRequest && $this->authorizedSurveyRequest['scope']['record'] === null) {
-            $flow = json_encode($this->authorizedSurveyRequest['flow'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+            $flow = json_encode($this->framework->escape($this->authorizedSurveyRequest['flow']),
+                JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE);
             print "<script>$(function(){ $('<input>', {type:'hidden',name:'__sa_flow',value:$flow}).appendTo('#form'); });</script>";
         }
     }
