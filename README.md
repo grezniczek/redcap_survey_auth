@@ -1,6 +1,6 @@
 # Survey Auth
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.TBD.svg)](https://doi.org/10.5281/zenodo.TBD)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22844808.svg)](https://doi.org/10.5281/zenodo.22844808)
 
 Survey Auth is a REDCap External Module that adds session-bound authentication to protected surveys and public dashboards and reports. It supports Custom credentials, REDCap Table authentication, REDCap-configured LDAP, and superuser-configured Other LDAP; scoped, expiring authorization; optional authentication-metadata writes; and optional Multi-Language Management (MLM) survey-login translations.
 

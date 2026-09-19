@@ -1,6 +1,6 @@
 # Survey Auth
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.TBD.svg)](https://doi.org/10.5281/zenodo.TBD)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22844808.svg)](https://doi.org/10.5281/zenodo.22844808)
 
 ## Support this work
 
