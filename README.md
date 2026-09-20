@@ -119,6 +119,12 @@ When _username_, _email_, _fullname_, or _timestamp_ are defined, the correspond
 
 When a value for _success_ is defined, the field with the action tag will be set to this value when Allow writing is enabled; no additional mapping is required. Use @READONLY/@READONLY-SURVEY or @HIDDEN-SURVEY to keep participants from editing the displayed authentication fields. With Allow writing enabled, the module also discards survey-request edits to the authentication fields it populated, including attempts to blank them. This preserves the values already saved at login; ordinary survey answers and staff data-entry edits are unaffected.
 
+### URL prefill
+
+REDCap URL prefill parameters are supported for a protected survey's first page, including when the participant must first sign in. On an initial ordinary GET request, Survey Auth retains only values for real first-page fields and valid checkbox options, then restores them to the post-login survey URL. It excludes calculated fields, fields that Survey Auth writes through `@SURVEY-AUTH`, unknown fields, and REDCap control parameters. Save & Return, Start over, POST submissions, and file requests do not retain prefill values.
+
+The values remain participant-supplied prefill; they do not grant access or override authentication metadata. URL prefill is therefore appropriate only for data that is suitable for a survey URL under your institution's privacy and logging practices.
+
 ### Combining **@SURVEY-AUTH** with **@IF**
 
 The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note that in public surveys, at the time of evaluation, the record does not exist yet, and thus any logic should be restricted to record-independent elements, such as e.g. the [arm-number], [arm-label] or the aggregate smart variables.
@@ -149,6 +155,7 @@ Authorization is stored in the REDCap survey session for the browser making the 
 - Login forms expire after 10 minutes. Reopen the resource to obtain a fresh form.
 - Authorization expires after 30 minutes without authorized activity or 8 hours after login, whichever comes first. REDCap session expiry or loss of the session cookie can end access earlier.
 - With **Allow writing** enabled, **Start over** restores the exact authentication values originally written by the module (including the original timestamp), while leaving survey answers cleared. Sessions created before this feature ask for login again before resetting.
+- On an initial survey GET, validated URL-prefill values for ordinary first-page fields remain available after login. They are retained only in the pending login context and are not a way to preserve POSTed answers or uploads.
 - Survey authorization is scoped to the survey response and repeat instance. Public starts are kept separate; Save & Return still requires REDCap's return-code validation and SurveyAuth authorization.
 - Dashboard and report authorization is scoped to the individual resource and endpoint. Logging into one does not authorize another.
 - Protection-setting changes invalidate existing authorization. Table-authenticated sessions also recheck account suspension and password changes. LDAP credentials are checked at login, not on each subsequent request.

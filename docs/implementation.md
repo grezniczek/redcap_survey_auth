@@ -43,7 +43,7 @@ Login uses the participant's REDCap survey session. Session initialization check
 
 ## Session state and identity
 
-The module stores `logins` and `grants` under `redcap_survey_auth_v2` in the REDCap survey session. A login context contains navigation and authorization scope, a policy revision, CSRF value, and expiry. Policy revisions include an implementation version so security upgrades can invalidate previously issued contexts and grants. On successful login, the native session ID is regenerated with deletion of the old session before a new grant is issued; failure to rotate denies access. Other pending contexts and native session data remain in the new session. Survey grants also retain the exact authentication field values successfully written at login, for restoration after Start over. It does not retain the password or submitted survey answers/uploads.
+The module stores `logins` and `grants` under `redcap_survey_auth_v2` in the REDCap survey session. A login context contains navigation and authorization scope, a policy revision, CSRF value, expiry and, for an initial survey GET, a bounded allowlist of URL-prefill values. Policy revisions include an implementation version so security upgrades can invalidate previously issued contexts and grants. On successful login, the native session ID is regenerated with deletion of the old session before a new grant is issued; failure to rotate denies access. Other pending contexts and native session data remain in the new session. Survey grants also retain the exact authentication field values successfully written at login, for restoration after Start over. It does not retain the password or submitted survey answers/uploads.
 
 | State | Lifetime |
 | --- | --- |
@@ -54,6 +54,8 @@ The module stores `logins` and `grants` under `redcap_survey_auth_v2` in the RED
 REDCap session expiry or loss of the session cookie can end authorization earlier. The state is bounded to 16 pending contexts and 32 grants. These are implementation limits, not configuration settings.
 
 Survey identity is resolved from REDCap's survey, participant, and response records. A continuation may use a response hash validated by core; Save & Return uses core return-code resolution. Posted record IDs are not an authorization source. Scope distinguishes project, survey, event, instrument, response/record and repeat instance.
+
+On an initial ordinary GET request, the pending login context may retain URL-prefill values for a maximum of 128 real first-page fields, at most 4 KiB per value and 16 KiB in total. It derives the first-page field set from the survey's paging metadata, accepts valid checkbox options, and excludes calculated fields and any field mapped by the active `@SURVEY-AUTH` tag when Allow writing is enabled. Values are restored only by an RFC3986-encoded post-login redirect. The module never forwards arbitrary query parameters and does not retain prefill on Save & Return, Start over, POST or file requests.
 
 Before a public response exists, a session-bound flow identifier separates starts in different tabs. The identifier has no authority without its matching session grant. `redcap_survey_page_top` adds navigation fields only; it is not the authorization gate.
 

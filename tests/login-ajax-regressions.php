@@ -29,9 +29,33 @@ class REDCap {
 }
 class Form {
     static function replaceIfActionTag($tag,...$args){return $tag;}
-    static function getValueInParenthesesActionTag($tag,$name){return 'success=1';}
+    static function getValueInParenthesesActionTag($tag,$name){
+        return preg_match('/'.preg_quote($name, '/').'\\(([^)]*)\\)/', $tag, $matches) ? $matches[1] : '';
+    }
 }
 class Survey { static function decryptResponseHash($hash,$participant){return $hash==='valid-response-hash'?9:null;} }
+class Project {
+    public static $testForms=[];
+    public static $testSurveys=[];
+    public static $testMetadata=[];
+    public $forms=[];
+    public $surveys=[];
+    public $metadata=[];
+    public function __construct($projectId) {
+        $this->forms=self::$testForms;
+        $this->surveys=self::$testSurveys;
+        $this->metadata=self::$testMetadata;
+    }
+    public function isRepeatingFormOrEvent($eventId,$formName){return false;}
+}
+function parseEnum($choices) {
+    $result=[];
+    foreach (preg_split('/\\R/', (string)$choices) as $choice) {
+        [$value,$label]=array_pad(explode(',', $choice, 2), 2, null);
+        if ($label !== null) $result[trim($value)]=trim($label);
+    }
+    return $result;
+}
 function isnumber($value) { return is_numeric($value); }
 function db_fetch_assoc($q) { if (!$q->valid()) return null; $r=$q->current(); $q->next(); return $r; }
 function check($value, $message) { if (!$value) throw new \RuntimeException($message); }

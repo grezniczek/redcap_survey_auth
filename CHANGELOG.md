@@ -4,7 +4,8 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
-| 2.2.1 | Furhter ecurity hardening |
+| 2.3.0 | New feature: Safely retain allowlisted first-page URL-prefill values across survey login. |
+| 2.2.1 | Further security hardening. |
 | 2.2.0 | Harden security, survey metadata, endpoint classification, custom credentials, action-tag parsing and participant content rendering; MLM translation support. See README for session lifetimes and configuration behavior. |
 | 2.1.1 | Bug fix: Dashboard protection and survey endpoint detection failed in some circumstances. |
 | 2.1.0 | New feature: Public Reports can be protected with a login. For instances with separate survey endpoint, additonal options are available. |

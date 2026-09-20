@@ -29,6 +29,9 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     private const LOGIN_TTL = 600;
     private const IDLE_TTL = 1800;
     private const ABSOLUTE_TTL = 28800;
+    private const PREFILL_MAX_FIELDS = 128;
+    private const PREFILL_MAX_VALUE_BYTES = 4096;
+    private const PREFILL_MAX_BYTES = 16384;
     private const MLM_TRANSLATIONS_SETTING = 'surveyauth_mlm_login_translations';
     private const MLM_TRANSLATIONS_VERSION = 1;
     private const MLM_TRANSLATIONS_MAX_BYTES = 2097152;

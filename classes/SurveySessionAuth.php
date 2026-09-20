@@ -170,7 +170,8 @@ trait SurveySessionAuth
             $this->settings = new SurveyAuthSettings($this, $projectId);
             $dictionary = $this->getSurveyDataDictionary($projectId, $scope['form_name']);
             if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
-            if (!$this->getTaggedFields($dictionary, $projectId, $scope['record'], $scope['event_id'], $scope['form_name'], $scope['instance'])) return;
+            $taggedFields = $this->getTaggedFields($dictionary, $projectId, $scope['record'], $scope['event_id'], $scope['form_name'], $scope['instance']);
+            if (!$taggedFields) return;
 
             if (($returnCode || $returnEntry) && !$scope['save_and_return']) {
                 $this->surveyStop('Save & Return is not enabled for this survey.');
@@ -260,6 +261,7 @@ trait SurveySessionAuth
             $destination = $this->surveyPath(APP_PATH_SURVEY_FULL).'?s='.rawurlencode($scope['hash']);
             $state['logins'][$id] = ['scope' => $scope, 'destination' => $destination,
                 'revision' => $revision, 'purpose' => $purpose, 'return' => $returnEntry || $returnCode, 'new' => $newRepeat,
+                'prefill' => $this->surveyLoginPrefill($scope, $taggedFields),
                 'expires' => time() + self::LOGIN_TTL, 'csrf' => bin2hex(random_bytes(32))];
             while (count($state['logins']) > 16) array_shift($state['logins']);
             if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
@@ -494,10 +496,75 @@ trait SurveySessionAuth
         $state['grants'][$returnOnly ? $this->surveyReturnKey($scope) : $this->surveyScopeKey($scope, $id)] = $grant;
         while (count($state['grants']) > 32) array_shift($state['grants']);
         $destination = $scope['record'] === null ? $login['destination'].'&__sa_flow='.$id : $this->surveyPath($result['targetUrl']);
+        if (!$returnOnly) $destination = $this->appendSurveyLoginPrefill($destination, $login['prefill'] ?? []);
         if ($returnOnly) $destination = $login['destination'];
         if (!empty($login['return'])) $destination .= '&__return=1';
         if (!empty($login['new'])) $destination .= '&new';
         return ['success'=>true, 'redirect'=>$destination];
+    }
+
+    /** Return only first-page, non-authentication field values from an initial survey URL. */
+    private function surveyLoginPrefill(array $scope, array $taggedFields): array
+    {
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET' || $scope['first_submit_time'] !== null ||
+            isset($_GET['__return']) || isset($_GET['__startover']) || $this->isSurveyFileRequest()) return [];
+        $project = new \Project($scope['project_id']);
+        $formFields = $project->forms[$scope['form_name']]['fields'] ?? null;
+        if (!is_array($formFields)) return [];
+        $firstPageFields = [];
+        $firstField = true;
+        $questionBySection = !empty($project->surveys[$scope['survey_id']]['question_by_section']);
+        $recordIdField = \REDCap::getRecordIdField();
+        foreach (array_keys($formFields) as $field) {
+            if (!is_string($field) || $field === $recordIdField || $field === $scope['form_name'].'_complete') continue;
+            $metadata = $project->metadata[$field] ?? null;
+            if (!is_array($metadata)) continue;
+            if ($questionBySection && !$firstField && !empty($metadata['element_preceding_header'])) break;
+            $firstPageFields[$field] = $metadata;
+            $firstField = false;
+        }
+        $authenticationFields = [];
+        if ($this->settings->canwrite) {
+            $authentication = $taggedFields[0];
+            foreach (array_merge([$authentication->successField], array_values($authentication->map)) as $field) {
+                if (is_string($field) && $field !== '') $authenticationFields[$field] = true;
+            }
+        }
+        $prefill = [];
+        $bytes = 0;
+        foreach ($_GET as $key => $value) {
+            if (!is_string($key) || !is_string($value) || strlen($value) > self::PREFILL_MAX_VALUE_BYTES) continue;
+            if (str_starts_with($key, '__') || in_array($key,
+                ['s', 'hash', 'page', 'event_id', 'pid', 'pnid', 'preview', 'id', 'sq', 'instance', 'new', 'prefix', 'ajax'], true)) continue;
+            $field = $key;
+            $metadata = $firstPageFields[$field] ?? null;
+            if ($metadata === null && $value === '1' && str_contains($key, '___')) {
+                [$field, $choice] = explode('___', $key, 2);
+                $metadata = $firstPageFields[$field] ?? null;
+                if (!is_array($metadata) || ($metadata['element_type'] ?? null) !== 'checkbox' || $choice === '' ||
+                    !array_key_exists($choice, \parseEnum($metadata['element_enum'] ?? ''))) continue;
+            } elseif (!is_array($metadata)) {
+                continue;
+            }
+            if (($metadata['element_type'] ?? null) === 'calc' || isset($authenticationFields[$field])) continue;
+            $size = strlen($key) + strlen($value);
+            if (count($prefill) >= self::PREFILL_MAX_FIELDS || $bytes + $size > self::PREFILL_MAX_BYTES) continue;
+            $prefill[$key] = $value;
+            $bytes += $size;
+        }
+        return $prefill;
+    }
+
+    private function appendSurveyLoginPrefill(string $destination, $prefill): string
+    {
+        if (!is_array($prefill)) return $destination;
+        $safePrefill = [];
+        foreach ($prefill as $field => $value) {
+            if (is_string($field) && is_string($value)) $safePrefill[$field] = $value;
+        }
+        $query = http_build_query($safePrefill, '', '&', PHP_QUERY_RFC3986);
+        if ($query === '') return $destination;
+        return $destination.(str_contains($destination, '?') ? '&' : '?').$query;
     }
 
     private function rotateSurveySession(): void
