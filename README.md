@@ -20,16 +20,14 @@ Authentication can use project-configured Custom credentials, REDCap's user tabl
 
 ## Requirements
 
-This development checkout targets REDCap master and uses External Modules Framework version 12. Compatibility with older REDCap releases has not been verified for these changes.
+Survey Auth requires External Modules Framework version 16 or later. Participant browsers must allow JavaScript.
 
 ## Installation
 
-Participant login requires JavaScript and uses the EM Framework’s AJAX route under `/surveys/`. Direct `/external_modules/` access is not required on the survey host; the framework’s survey AJAX route must be available.
+Install Survey Auth through REDCap's External Modules Manager, either from the Consortium Repository or according to your institution's local module-installation process.
 
-- Clone this repository into `<redcap-root>/modules/redcap_survey_auth_v<version-number>`, or obtain it from the Consortium REDCap Repo via the Control Center.
-- Go to Control Center > Technical / Developer Tools > External Modules and enable REDCap Survey Auth.
+- Go to Control Center > Technical / Developer Tools > External Modules and enable Survey Auth.
 - Enable the module for each project that needs survey authentication. Configure at least one authentication method before adding `@SURVEY-AUTH` to a survey instrument or enabling dashboard/report protection. A protected resource with no enabled authentication method rejects every login.
-- For development checkouts, use the directory name `redcap_survey_auth_v9.9.9`.
 
 ## Configuration
 
@@ -47,7 +45,7 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
 - **Allow writing:** When this is enabled, the module writes the authentication values selected by the `@SURVEY-AUTH` parameters to the survey response before forwarding the user to the survey. For a public survey, it creates a response when those values need to be written; for an existing response, it writes to that response. Without a mapped value or `success` parameter, this setting creates no record. When disabled, the module writes no authentication metadata, although REDCap can still save ordinary survey responses after authorization. Authentication attempts are logged according to the Logging setting independently of Allow writing; survey-authentication log entries include the submitted username, survey, instance, and outcome.
 
-- **Text displayed above username/password fields:** Optionally enter a prompt for the survey user. This is the only participant-facing setting that permits REDCap-supported formatting; `filter_tags()` removes unsafe HTML before display. The same filtering applies to its MLM translations. All other labels and messages are displayed as plain text.
+- **Text displayed above username/password fields:** Optionally enter a prompt for the survey user. This is the only participant-facing setting that permits REDCap-supported formatting; unsafe HTML is removed before display. The same filtering applies to its MLM translations. All other labels and messages are displayed as plain text.
 
 - **Username label:** The label to be displayed for the username text box. Defaults to 'Username'.
 
@@ -121,13 +119,13 @@ When a value for _success_ is defined, the field with the action tag will be set
 
 ### URL prefill
 
-REDCap URL prefill parameters are supported for a protected survey's first page, including when the participant must first sign in. On an initial ordinary GET request, Survey Auth retains only values for real first-page fields and valid checkbox options, then restores them to the post-login survey URL. It excludes calculated fields, fields that Survey Auth writes through `@SURVEY-AUTH`, unknown fields, and REDCap control parameters. Save & Return, Start over, POST submissions, and file requests do not retain prefill values.
+REDCap URL prefill parameters are supported for a protected survey's first page, including when the participant must first sign in. When the participant opens the survey link, Survey Auth retains only values for real first-page fields and valid checkbox options, then restores them after login. It excludes calculated fields, fields that Survey Auth writes through `@SURVEY-AUTH`, unknown fields, and REDCap control parameters. Save & Return, Start over, answer submissions, and file requests do not retain prefill values.
 
 The values remain participant-supplied prefill; they do not grant access or override authentication metadata. URL prefill is therefore appropriate only for data that is suitable for a survey URL under your institution's privacy and logging practices.
 
 ### Resuming a saved public response
 
-When a protected public survey enables REDCap's Save & Return feature, its login dialog includes an optional **Returning?** return-code field. Enter the code together with the Survey Auth credentials to continue the saved response. Survey Auth resolves the code server-side, writes authentication metadata to that existing response when **Allow writing** is enabled, then sends the already validated code once in a same-origin POST to REDCap's continuation flow. This avoids a duplicate return-code page. The code is neither kept in the login session nor added to a redirect URL; selecting it also discards any pending URL prefill. Private survey links continue to use REDCap's native return-code and Start over page.
+When a protected public survey enables REDCap's Save & Return feature, its login dialog includes an optional **Returning?** return-code field. Enter the code together with the Survey Auth credentials to continue the saved response. Survey Auth validates the code, writes authentication metadata to that existing response when **Allow writing** is enabled, and continues the response without prompting for the code again. The code is not added to the survey URL; selecting it also discards any pending URL prefill. Private survey links continue to use REDCap's native return-code and Start over page.
 
 ### Combining **@SURVEY-AUTH** with **@IF**
 
@@ -147,13 +145,13 @@ The copy icon beside each endpoint option copies that endpoint’s public report
 
 ![Protection of Public Dashboards](images/public-dashboard-protection.png)
 
-Endpoint selection uses the configured scheme, hostname, port, and base path. It derives the current origin from PHP's server configuration rather than the client-controlled `Host` header. Reverse proxies must therefore expose the canonical public server name, port, and scheme to PHP. Internal and external URLs can share a hostname if their base paths differ; the more specific matching path takes precedence. Requests matching neither configured endpoint are denied. Denying external access takes precedence over login protection, including for users who already authenticated.
+Endpoint selection uses the configured scheme, hostname, port, and base path. When a reverse proxy is used, configure PHP and REDCap with the canonical public server name, port, and scheme. Internal and external URLs can share a hostname if their base paths differ; the more specific matching path takes precedence. Requests matching neither configured endpoint are denied. Denying external access takes precedence over login protection, including for users who already authenticated.
 
 Dashboard copies inherit the source dashboard's SurveyAuth settings. Copies remain private until those settings are saved, and become public only if REDCap's publication rules permit it. REDCap copies reports as non-public; review protection when making a copied report public.
 
 ## Authentication sessions
 
-Authorization is stored in the REDCap survey session for the browser making the request. Successful login rotates the session identifier and invalidates the previous identifier while retaining needed session data. This security update invalidates earlier grants and login forms: participants must reopen the resource and sign in again. Sharing a survey, dashboard, or report URL does not share authorization. Old URL authentication tokens and calendar-day dashboard/report session flags are no longer accepted.
+Authorization is stored in the REDCap survey session for the browser making the request. Sharing a survey, dashboard, or report URL does not share authorization.
 
 - Use one active survey tab at a time. Multiple login tabs can authenticate independently without refreshing after another tab opens. Completing a survey with final Submit makes REDCap destroy the shared survey session, so other tabs must sign in again; unsaved answers are not automatically restored.
 - Login forms expire after 10 minutes. Reopen the resource to obtain a fresh form.
@@ -164,13 +162,11 @@ Authorization is stored in the REDCap survey session for the browser making the 
 - Dashboard and report authorization is scoped to the individual resource and endpoint. Logging into one does not authorize another.
 - Protection-setting changes invalidate existing authorization. Table-authenticated sessions also recheck account suspension and password changes. LDAP credentials are checked at login, not on each subsequent request.
 
-SurveyAuth gates access to survey file routes; REDCap retains responsibility for native file handling after authorization.
-
 ## Retired settings
 
-The former **Success message** (`surveyauth_successmsg`) and **Continue label** (`surveyauth_continuelabel`) settings have been removed because successful login redirects immediately. Their saved values are deleted when the module is enabled or changed to this version in Control Center, including values retained in disabled projects. Project enable also cleans up values restored or imported later. Cleanup is safe to repeat.
+The former **Success message** and **Continue label** settings have been removed because successful login redirects immediately. During an upgrade, their saved values are removed and cannot be restored by rolling back the module.
 
-The earlier token-to-Allow writing migration is retained: a nonempty legacy token enables metadata writing only when Allow writing has no saved value. Explicit choices are preserved, and the legacy token is removed. Rolling back does not restore deleted custom messages or tokens.
+A legacy token setting is converted to **Allow writing** during an upgrade when no explicit Allow writing value is already saved. The legacy token is then removed; rolling back does not restore it.
 
 ## Release History
 
