@@ -6,6 +6,7 @@
 /SUPPORT.md export-ignore
 /images/qr-paypal.png export-ignore
 /tests export-ignore
+/docs export-ignore
 EM.code-workspace export-ignore
 package.json export-ignore
 package-lock.json export-ignore

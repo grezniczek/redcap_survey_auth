@@ -99,7 +99,7 @@ Install Survey Auth through REDCap's External Modules Manager, either from the C
 
 - **Use Allowlist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully. Matching is case-insensitive; an enabled empty allowlist denies everyone.
 
-- **Survey Auth login translations (MLM project link):** The **Survey Auth login translations** link is shown when the project has at least one survey with `@SURVEY-AUTH`, MLM is active for the project, and at least one MLM language is project-active. It lets users with project Design rights translate the Survey Auth survey-login text for project-active languages. At runtime, a language is available only when it is also active for that particular protected survey; survey titles and custom-logo alternative text come from MLM's own survey metadata, and Returning?/Return Code/help use MLM's core UI translations. Dashboard and report login pages are not translated by this feature. See the [MLM companion integration guide](docs/mlm_integration.md) for details.
+- **Survey Auth login translations** (project link): This link is shown when the project has at least one survey with `@SURVEY-AUTH`, MLM is active for the project, and at least one MLM language is project-active. It lets users with project Design rights translate the Survey Auth survey-login text for project-active languages. At runtime, a language is available only when it is also active for that particular protected survey; survey titles and custom-logo alternative text come from MLM's own survey metadata, and Returning?/Return Code/help use MLM's core UI translations. Dashboard and report login pages are not translated by this feature.
 
 - **Public Dashboard Access Denied Message:** Allows a custom plain-text message when a public dashboard is configured to deny access from the external survey endpoint. Failed dashboard logins use the Fail message instead.
 
@@ -129,7 +129,7 @@ When a protected public survey enables REDCap's Save & Return feature, its login
 
 ### Combining **@SURVEY-AUTH** with **@IF**
 
-The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note that in public surveys, at the time of evaluation, the record does not exist yet, and thus any logic should be restricted to record-independent elements, such as e.g. the [arm-number], [arm-label] or the aggregate smart variables.
+The **@SURVEY-AUTH** action tag can be used inside **@IF** action tags. Note that in public surveys, at the time of evaluation, the record does not exist yet, and thus any logic should be restricted to record-independent elements, such as e.g. the `[arm-number]`, `[arm-label]` or the aggregate smart variables.
 
 
 ## Public Dashboards and Reports
