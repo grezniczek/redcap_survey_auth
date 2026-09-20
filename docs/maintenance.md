@@ -88,7 +88,7 @@ Choose live checks according to the change:
 | Workflow | Required observations |
 | --- | --- |
 | Initial and continuation survey submissions | Unauthorized requests cause no writes/completion; authorized navigation and public-to-private continuation work with Allow writing on/off |
-| Return, repeats and multiple tabs | Core return-code behavior remains intact; response/instance scopes stay distinct; completion retires the correct grant |
+| Return, repeats and multiple tabs | A public Save & Return login accepts a valid code, posts it once to resume the resolved response without a duplicate REDCap prompt, and writes only to that response; invalid codes cannot reach authentication; private links retain REDCap's native return-code page; response/instance scopes stay distinct; completion retires the correct grant |
 | Expiry and account/policy changes | Writes are blocked after expiry/revocation; the user gets the unsaved-submission message; no unintended replay occurs |
 | Dashboard/report login and copying | Both configured origins apply the intended policy; a fresh browser requires its own login; copied dashboards inherit settings before publication |
 | Files | Protected routes require authorization; authorized requests retain REDCap's expected native behavior |

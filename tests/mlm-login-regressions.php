@@ -34,6 +34,12 @@ namespace MultiLanguageManagement {
         public static function sortLanguages($languages, $subset = null) { return $subset ?? array_keys($languages); }
         public static function formatLangIdForHtmlTag($languageId) { return strtolower(explode('-', $languageId)[0]); }
         public static function getCurrentLanguage($context) { return self::$current; }
+        public static function getUITranslation($context, $key) {
+            return [
+                'de-DE' => ['survey_22'=>'Zurückkehrend?', 'survey_118'=>'Rückkehrcode', 'survey_24'=>'Setzen Sie die Umfrage mit Ihrem Rückkehrcode fort.'],
+                'en-US' => ['survey_22'=>'Returning?', 'survey_118'=>'Return Code', 'survey_24'=>'Continue the survey with your return code.'],
+            ][$context->languageId][$key] ?? '';
+        }
         public static function getDDTranslation($context, $type, $form) {
             if ($type === 'survey-logo_alt_text') {
                 return ['de-DE'=>'Logo der Studie', 'en-US'=>'Study logo'][$context->languageId] ?? '';
@@ -86,6 +92,9 @@ namespace {
     $items = invoke($module, 'surveyMlmLoginItems', $settings);
     check(!isset($items['login.language_label'], $items['login.logo_alt']),
         'The obsolete selector and logo-alt strings are not exposed for translation.');
+    check(isset($items['login.return_code_invalid']) && !$items['login.return_code_invalid']['html'] &&
+        !isset($items['login.returning_heading'], $items['login.return_code_label'], $items['login.return_code_help']),
+        'Only the Survey Auth return-code error is module-owned translation content.');
     $framework->stored = json_encode(['version'=>1, 'languages'=>[
         'de-DE' => [
             'login.heading' => ['value'=>'Anmelden', 'source_hash'=>hash('sha256', $items['login.heading']['value'])],
@@ -114,6 +123,10 @@ namespace {
     check($presentation['languages']['de-DE']['survey_logo_alt'] === 'Logo der Studie' &&
         $presentation['languages']['en-US']['survey_logo_alt'] === 'Study logo',
         'MLM custom-logo alternative text joins the login language catalogue.');
+    check($presentation['languages']['de-DE']['core_strings']['survey_22'] === 'Zurückkehrend?' &&
+        $presentation['languages']['en-US']['core_strings']['survey_118'] === 'Return Code' &&
+        $presentation['core_strings']['survey_22'] === 'Zurückkehrend?',
+        'Returning UI strings use MLM core-language translations, not module-owned overrides.');
     check($presentation['strings']['login.password_label'] === 'Pass phrase', 'Missing strings use the configured MLM fallback language.');
     check($presentation['strings']['login.submit_label'] === $items['login.submit_label']['value'], 'Invalid translation entries fail closed to the reference string.');
 

@@ -63,6 +63,7 @@ function invoke($module, $method, ...$args) { return (new \ReflectionMethod($mod
 function ajax($action,$payload,$pid) { global $module; return $module->redcap_module_ajax(...array_pad([$action,$payload,$pid],14,null)); }
 class LoginFixture extends \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule {
     public $attempts=0;
+    public $authenticationCalls=[];
     public $settingsReads=0;
     public $throw=false;
     public $allowWriting=false;
@@ -70,8 +71,10 @@ class LoginFixture extends \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalMo
     public function getProjectSetting($key) { return str_contains($key, '_protected_') || ($key==='surveyauth_canwrite' && $this->allowWriting) ? '1' : ''; }
     public function authenticate($username,$password,$project_id,$instrument,$event_id,$repeat_instance,$record,$writeAuthenticationData=true) {
         $this->attempts++;
+        $this->authenticationCalls[]=[$project_id,$instrument,$event_id,$repeat_instance,$record,$writeAuthenticationData];
         if ($this->throw) throw new \RuntimeException('synthetic backend secret');
-        return ['success'=>$username==='fixture' && $password==='correct', 'error'=>'Denied', 'record'=>null, 'method'=>'Custom',
+        return ['success'=>$username==='fixture' && $password==='correct', 'error'=>'Denied', 'method'=>'Custom',
+            'record'=>$record, 'targetUrl'=>$record === null ? '/surveys/?s=public' : '/surveys/?s=private',
             'authentication_values'=>['auth'=>'1','auth_user'=>$username]];
     }
     public function authenticatePublicDashboardOrReport($username,$password,$project_id,$page) {
@@ -87,6 +90,9 @@ $module->framework=new class {
     public function loadREDCapJS(){}
     public function loadBootstrap(){}
     public function query($sql,$params) {
+        if (str_contains($sql,'UPPER(r.return_code)')) {
+            return new \ArrayIterator(($params[2] ?? null)==='VALIDCODE' ? [['hash'=>'private','response_id'=>9]] : []);
+        }
         if (str_contains($sql,'redcap_surveys s')) return new \ArrayIterator([[
             'project_id'=>1,'survey_id'=>2,'form_name'=>'survey','save_and_return'=>1,'event_id'=>3,
             'participant_id'=>4,'participant_email'=>$params[1]==='private'?'':null,
@@ -138,6 +144,53 @@ foreach (['survey','dashboard','report'] as $type) {
         'Survey grant retains only the metadata values returned by authentication');
     check(!ajax('survey-login',$payload,1)['success'], 'Consumed login cannot be replayed');
 }
+$_SERVER['REQUEST_METHOD']='GET';
+$_POST=[];
+$_GET=['s'=>'public'];
+$module->exited=false;
+ob_start();
+$module->redcap_every_page_before_render(1);
+ob_end_clean();
+$publicLogin=end($_SESSION['redcap_survey_auth_v2']['logins']);
+check(!empty($publicLogin['allow_return_code']),
+    'A public Save & Return survey login context enables the return-code control');
+$_GET=['s'=>'private'];
+$module->exited=false;
+ob_start();
+$module->redcap_every_page_before_render(1);
+ob_end_clean();
+$privateLogin=end($_SESSION['redcap_survey_auth_v2']['logins']);
+check(empty($privateLogin['allow_return_code']),
+    'Private survey login contexts leave return-code entry to REDCap\'s native continuation page');
+$_SERVER['REQUEST_METHOD']='POST';
+$payload=loginContext();
+$payload['return_code']='VALIDCODE';
+$before=$module->attempts;
+$r=ajax('survey-login',$payload,1);
+check(!$r['success'] && $r['error_key']==='login.return_code_invalid' && $module->attempts===$before,
+    'A return code cannot retarget a login context that did not explicitly allow it');
+$payload=loginContext();
+$_SESSION['redcap_survey_auth_v2']['logins']['context']['allow_return_code']=true;
+$_SESSION['redcap_survey_auth_v2']['logins']['context']['purpose']='return';
+$_SESSION['redcap_survey_auth_v2']['logins']['context']['return']=true;
+$_SESSION['redcap_survey_auth_v2']['logins']['context']['prefill']=['ordinary'=>'prefill'];
+$payload['return_code']='wrong-code';
+$before=$module->attempts;
+$r=ajax('survey-login',$payload,1);
+check(!$r['success'] && $r['error_key']==='login.return_code_invalid' && isset($r['csrf']) && $r['csrf']!==$payload['csrf'] &&
+    $module->attempts===$before, 'Invalid return codes do not reach authentication and rotate the login CSRF');
+$payload['csrf']=$r['csrf'];
+$payload['return_code']='validcode';
+$r=ajax('survey-login',$payload,1);
+check($r['success'] && $r['redirect']==='/surveys/?s=private' && !empty($r['post_return_code']),
+    'A valid public-survey return code resumes the resolved response without forwarding prefill or requesting REDCap\'s return page');
+$call=end($module->authenticationCalls);
+check($call[4]==='existing' && $call[5]===true,
+    'Return-code login writes authentication metadata to the resolved existing response');
+$returnScope=invoke($module,'surveyScope',1,'private',9);
+$returnGrant=current($_SESSION['redcap_survey_auth_v2']['grants']);
+check($returnGrant['revision']===invoke($module,'surveyPolicyRevision',$returnScope),
+    'The resumed response grant uses the resolved response policy revision');
 $payload=loginContext();
 $module->throw=true;
 $r=ajax('survey-login',$payload,1);

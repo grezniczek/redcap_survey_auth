@@ -84,6 +84,14 @@
 			<input class="form-control form-control-sm" id="username" autocomplete="username" required autofocus>
 			<label class="form-label mt-2" for="password" data-surveyauth-i18n="login.password_label"><?= $escape($passwordLabel) ?></label>
 			<input class="form-control form-control-sm" id="password" type="password" autocomplete="current-password" required>
+			<?php if ($allowReturnCode): ?>
+				<div class="mt-3" data-surveyauth-return-code>
+					<div class="fw-semibold" data-surveyauth-core-i18n="survey_22"><?= $escape($returningHeading) ?></div>
+					<div class="form-text" id="return-code-help" data-surveyauth-core-i18n="survey_24"><?= $escape($returnCodeHelp) ?></div>
+					<label class="form-label mt-2" for="return-code" data-surveyauth-core-i18n="survey_118"><?= $escape($returnCodeLabel) ?></label>
+					<input class="form-control form-control-sm" id="return-code" type="password" maxlength="15" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" aria-describedby="return-code-help">
+				</div>
+			<?php endif; ?>
 			<button class="btn btn-primary mt-3" type="submit" disabled data-surveyauth-i18n="login.submit_label"><?= $escape($submitLabel) ?></button>
 		</form>
 	</main>

@@ -49,6 +49,19 @@ $html = renderBranding(['title'=>'<b>A & B</b>', 'hide_title'=>0, 'doc_id'=>42])
 check($_SESSION['redcap_survey_auth_v2']['logins']['branding']['framework_csrf']===str_repeat('a',80),
     'Login context retains the framework token embedded in that tab');
 checkLoginForm($html);
+check(!str_contains($html, 'data-surveyauth-return-code'), 'Ineligible login contexts do not show a return-code control.');
+$_SESSION['redcap_survey_auth_v2']['logins']['branding']['allow_return_code'] = true;
+$returnHtml = renderBranding(['title'=>'Survey', 'hide_title'=>0, 'doc_id'=>null]);
+check(str_contains($returnHtml, 'data-surveyauth-return-code') && str_contains($returnHtml, 'id="return-code"') &&
+    str_contains($returnHtml, 'type="password"') && str_contains($returnHtml, 'maxlength="15"') && !preg_match('/<input[^>]+name=/', $returnHtml),
+    'Eligible public survey contexts render an unnamed, masked, bounded return-code input.');
+check(str_contains($returnHtml, 'data-surveyauth-core-i18n="survey_22"') &&
+    str_contains($returnHtml, 'data-surveyauth-core-i18n="survey_118"') &&
+    str_contains($returnHtml, 'data-surveyauth-core-i18n="survey_24"') &&
+    strpos($returnHtml, 'data-surveyauth-core-i18n="survey_22"') < strpos($returnHtml, 'data-surveyauth-core-i18n="survey_24"') &&
+    strpos($returnHtml, 'data-surveyauth-core-i18n="survey_24"') < strpos($returnHtml, 'data-surveyauth-core-i18n="survey_118"'),
+    'Returning text uses MLM core strings, with the standard help directly below the heading.');
+unset($_SESSION['redcap_survey_auth_v2']['logins']['branding']['allow_return_code']);
 check(!empty($fixture->redcapJsLoaded) && !empty($fixture->bootstrapLoaded),
     'The standalone login loads the REDCap Bootstrap assets through framework helpers.');
 check(preg_match('/<h1(?:\s[^>]*)?>A &amp; B<\/h1>/', $html) === 1, 'Survey title is plain, escaped text');

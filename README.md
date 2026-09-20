@@ -101,7 +101,7 @@ Participant login requires JavaScript and uses the EM Framework’s AJAX route u
 
 - **Use Allowlist:** When checked, a list of usernames (one username per line) can be entered. Only users in this list will be able to authenticate successfully. Matching is case-insensitive; an enabled empty allowlist denies everyone.
 
-- **Survey Auth login translations (MLM project link):** The **Survey Auth login translations** link is shown when the project has at least one survey with `@SURVEY-AUTH`, MLM is active for the project, and at least one MLM language is project-active. It lets users with project Design rights translate the Survey Auth survey-login text for project-active languages. At runtime, a language is available only when it is also active for that particular protected survey; survey titles and custom-logo alternative text come from MLM's own survey metadata. Dashboard and report login pages are not translated by this feature. See the [MLM companion integration guide](docs/mlm_integration.md) for details.
+- **Survey Auth login translations (MLM project link):** The **Survey Auth login translations** link is shown when the project has at least one survey with `@SURVEY-AUTH`, MLM is active for the project, and at least one MLM language is project-active. It lets users with project Design rights translate the Survey Auth survey-login text for project-active languages. At runtime, a language is available only when it is also active for that particular protected survey; survey titles and custom-logo alternative text come from MLM's own survey metadata, and Returning?/Return Code/help use MLM's core UI translations. Dashboard and report login pages are not translated by this feature. See the [MLM companion integration guide](docs/mlm_integration.md) for details.
 
 - **Public Dashboard Access Denied Message:** Allows a custom plain-text message when a public dashboard is configured to deny access from the external survey endpoint. Failed dashboard logins use the Fail message instead.
 
@@ -124,6 +124,10 @@ When a value for _success_ is defined, the field with the action tag will be set
 REDCap URL prefill parameters are supported for a protected survey's first page, including when the participant must first sign in. On an initial ordinary GET request, Survey Auth retains only values for real first-page fields and valid checkbox options, then restores them to the post-login survey URL. It excludes calculated fields, fields that Survey Auth writes through `@SURVEY-AUTH`, unknown fields, and REDCap control parameters. Save & Return, Start over, POST submissions, and file requests do not retain prefill values.
 
 The values remain participant-supplied prefill; they do not grant access or override authentication metadata. URL prefill is therefore appropriate only for data that is suitable for a survey URL under your institution's privacy and logging practices.
+
+### Resuming a saved public response
+
+When a protected public survey enables REDCap's Save & Return feature, its login dialog includes an optional **Returning?** return-code field. Enter the code together with the Survey Auth credentials to continue the saved response. Survey Auth resolves the code server-side, writes authentication metadata to that existing response when **Allow writing** is enabled, then sends the already validated code once in a same-origin POST to REDCap's continuation flow. This avoids a duplicate return-code page. The code is neither kept in the login session nor added to a redirect URL; selecting it also discards any pending URL prefill. Private survey links continue to use REDCap's native return-code and Start over page.
 
 ### Combining **@SURVEY-AUTH** with **@IF**
 
@@ -156,7 +160,7 @@ Authorization is stored in the REDCap survey session for the browser making the 
 - Authorization expires after 30 minutes without authorized activity or 8 hours after login, whichever comes first. REDCap session expiry or loss of the session cookie can end access earlier.
 - With **Allow writing** enabled, **Start over** restores the exact authentication values originally written by the module (including the original timestamp), while leaving survey answers cleared. Sessions created before this feature ask for login again before resetting.
 - On an initial survey GET, validated URL-prefill values for ordinary first-page fields remain available after login. They are retained only in the pending login context and are not a way to preserve POSTed answers or uploads.
-- Survey authorization is scoped to the survey response and repeat instance. Public starts are kept separate; Save & Return still requires REDCap's return-code validation and SurveyAuth authorization.
+- Survey authorization is scoped to the survey response and repeat instance. Public starts are kept separate; a public Save & Return survey accepts its return code in the login dialog and still requires REDCap's return-code validation plus SurveyAuth authorization. Private links retain REDCap's native return-code page.
 - Dashboard and report authorization is scoped to the individual resource and endpoint. Logging into one does not authorize another.
 - Protection-setting changes invalidate existing authorization. Table-authenticated sessions also recheck account suspension and password changes. LDAP credentials are checked at login, not on each subsequent request.
 

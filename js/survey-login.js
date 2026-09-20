@@ -2,6 +2,7 @@ function initializeSurveyAuthLogin(form, module, translations) {
     const button = form.querySelector('button');
     const username = form.querySelector('#username');
     const passwordInput = form.querySelector('#password');
+    const returnCodeInput = form.querySelector('#return-code');
     const error = document.getElementById('survey-auth-error');
     const languages = translations && typeof translations === 'object' && translations.languages &&
         typeof translations.languages === 'object' ? translations.languages : null;
@@ -10,6 +11,11 @@ function initializeSurveyAuthLogin(form, module, translations) {
 
     function stringFor(key) {
         const strings = languages && languages[currentLanguage] && languages[currentLanguage].strings;
+        return strings && typeof strings[key] === 'string' ? strings[key] : null;
+    }
+
+    function coreStringFor(key) {
+        const strings = languages && languages[currentLanguage] && languages[currentLanguage].core_strings;
         return strings && typeof strings[key] === 'string' ? strings[key] : null;
     }
 
@@ -51,6 +57,10 @@ function initializeSurveyAuthLogin(form, module, translations) {
             // Every other participant-facing string stays text-only.
             if (element.dataset.surveyauthHtml === 'true') element.innerHTML = value;
             else element.textContent = value;
+        });
+        document.querySelectorAll('[data-surveyauth-core-i18n]').forEach(function(element) {
+            const value = coreStringFor(element.getAttribute('data-surveyauth-core-i18n'));
+            if (value !== null) element.textContent = value;
         });
         if (typeof selected.survey_title === 'string') {
             document.querySelectorAll('[data-surveyauth-survey-title]').forEach(function(element) {
@@ -95,21 +105,51 @@ function initializeSurveyAuthLogin(form, module, translations) {
         error.hidden = true;
         let password = passwordInput.value;
         passwordInput.value = '';
+        let returnCode = returnCodeInput ? returnCodeInput.value : '';
+        if (returnCodeInput) returnCodeInput.value = '';
         // JSMO can log its payload on transport errors. Serialize credentials once,
-        // without leaving them as properties of the object retained by its queue.
+        // without leaving credentials or a response return code as properties of
+        // the object retained by its queue.
         const context = form.dataset.context;
         const csrf = form.dataset.csrf;
         const user = username.value;
+        let coreReturnCode = '';
         const payload = {toJSON() {
             const data = {context, csrf, username: user, password};
             password = '';
+            if (returnCode !== '') {
+                data.return_code = returnCode;
+                coreReturnCode = returnCode;
+            }
+            returnCode = '';
             return data;
         }};
+        let result;
         try {
-            const result = await module.ajax('survey-login', payload);
+            result = await module.ajax('survey-login', payload);
             if (result && result.success === true && typeof result.redirect === 'string') {
                 const target = new URL(result.redirect, window.location.href);
                 if (target.origin !== window.location.origin) throw new Error('Invalid redirect');
+                if (result.post_return_code === true) {
+                    if (coreReturnCode === '') throw new Error('Missing return code');
+                    // REDCap's continuation route accepts the code only in POST.
+                    // This is reached exclusively after the module has validated a
+                    // public-survey return code and created its response grant.
+                    const continuation = document.createElement('form');
+                    continuation.method = 'post';
+                    continuation.action = target.href;
+                    continuation.style.display = 'none';
+                    const code = document.createElement('input');
+                    code.type = 'hidden';
+                    code.name = '__code';
+                    code.value = coreReturnCode;
+                    continuation.appendChild(code);
+                    document.body.appendChild(continuation);
+                    continuation.submit();
+                    code.value = '';
+                    coreReturnCode = '';
+                    return;
+                }
                 window.location.assign(target.href);
                 return;
             }
@@ -120,9 +160,12 @@ function initializeSurveyAuthLogin(form, module, translations) {
             setError('login.ajax_error', 'Login could not be completed. Please reopen this page and try again.');
         } finally {
             password = '';
+            returnCode = '';
+            coreReturnCode = '';
             pending = false;
             button.disabled = false;
         }
-        passwordInput.focus();
+        if (result && result.error_key === 'login.return_code_invalid' && returnCodeInput) returnCodeInput.focus();
+        else passwordInput.focus();
     });
 }

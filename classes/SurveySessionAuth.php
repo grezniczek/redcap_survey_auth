@@ -261,6 +261,7 @@ trait SurveySessionAuth
             $destination = $this->surveyPath(APP_PATH_SURVEY_FULL).'?s='.rawurlencode($scope['hash']);
             $state['logins'][$id] = ['scope' => $scope, 'destination' => $destination,
                 'revision' => $revision, 'purpose' => $purpose, 'return' => $returnEntry || $returnCode, 'new' => $newRepeat,
+                'allow_return_code' => $scope['participant_email'] === null && !empty($scope['save_and_return']),
                 'prefill' => $this->surveyLoginPrefill($scope, $taggedFields),
                 'expires' => time() + self::LOGIN_TTL, 'csrf' => bin2hex(random_bytes(32))];
             while (count($state['logins']) > 16) array_shift($state['logins']);
@@ -353,6 +354,11 @@ trait SurveySessionAuth
         $usernameLabel = $strings['login.username_label'] ?? $this->settings->usernameLabel;
         $passwordLabel = $strings['login.password_label'] ?? $this->settings->passwordLabel;
         $submitLabel = $strings['login.submit_label'] ?? $this->settings->submitLabel;
+        $allowReturnCode = !empty($login['allow_return_code']);
+        $returnCoreStrings = $mlmPresentation['core_strings'] ?? [];
+        $returningHeading = $returnCoreStrings['survey_22'] ?? 'Returning?';
+        $returnCodeLabel = $returnCoreStrings['survey_118'] ?? 'Return Code';
+        $returnCodeHelp = $returnCoreStrings['survey_24'] ?? '';
         $logoAlt ??= 'Survey logo';
         $noJavascript = $strings['login.javascript_required'] ?? 'JavaScript is required to sign in. Please enable JavaScript and reopen this page.';
         $htmlLang = $mlmPresentation['html_lang'] ?? 'en';
@@ -458,35 +464,58 @@ trait SurveySessionAuth
         if (isset($login['resource'])) {
             return $this->publicResourceLogin($id, $login, $payload['username'] ?? null, $payload['password'] ?? null);
         }
-        $scope = $login['scope'];
-        $this->settings = new SurveyAuthSettings($this, $scope['project_id']);
+        $sourceScope = $login['scope'];
+        $this->settings = new SurveyAuthSettings($this, $sourceScope['project_id']);
         $username = $payload['username'] ?? null;
         $password = $payload['password'] ?? null;
         unset($payload['username'], $payload['password']);
-        $currentScope = $this->surveyScope($scope['project_id'], $scope['hash'], $scope['response_id']);
+        $currentScope = $this->surveyScope($sourceScope['project_id'], $sourceScope['hash'], $sourceScope['response_id']);
         if (!is_string($username) || !is_string($password) ||
-            $this->surveyScopeKey($currentScope, $id) !== $this->surveyScopeKey($scope, $id) ||
-            !hash_equals($login['revision'], $this->surveyPolicyRevision($scope))) {
+            $this->surveyScopeKey($currentScope, $id) !== $this->surveyScopeKey($sourceScope, $id) ||
+            !hash_equals($login['revision'], $this->surveyPolicyRevision($sourceScope))) {
             return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the survey.', 'error_key'=>'login.expired'];
         }
+        $scope = $sourceScope;
+        $returning = false;
+        $returnCode = $payload['return_code'] ?? '';
+        unset($payload['return_code']);
+        if (!is_string($returnCode)) {
+            return $this->retrySurveyLogin($state, $id, 'Invalid username, password, or return code.', 'login.return_code_invalid');
+        }
+        if (trim($returnCode) !== '') {
+            if (empty($login['allow_return_code'])) {
+                return $this->retrySurveyLogin($state, $id, 'Invalid username, password, or return code.', 'login.return_code_invalid');
+            }
+            $resolvedScope = $this->surveyReturnScope($sourceScope, $returnCode);
+            if ($resolvedScope === null) {
+                return $this->retrySurveyLogin($state, $id, 'Invalid username, password, or return code.', 'login.return_code_invalid');
+            }
+            $scope = $resolvedScope;
+            if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
+            $dictionary = $this->getSurveyDataDictionary($scope['project_id'], $scope['form_name']);
+            if (!$this->getTaggedFields($dictionary, $scope['project_id'], $scope['record'], $scope['event_id'],
+                $scope['form_name'], $scope['instance'])) {
+                return ['success'=>false, 'error'=>'Login expired or invalid. Please reopen the survey.', 'error_key'=>'login.expired'];
+            }
+            $returning = true;
+        }
         if ($scope['record'] !== null) $GLOBALS['hidden_edit'] = 1;
-        $result = $this->authenticate($username, $password, $scope['project_id'], $scope['form_name'], $scope['event_id'], $scope['instance'], $scope['record'], ($login['purpose'] ?? 'survey') !== 'return');
+        $result = $this->authenticate($username, $password, $scope['project_id'], $scope['form_name'], $scope['event_id'], $scope['instance'], $scope['record'],
+            ($login['purpose'] ?? 'survey') !== 'return' || $returning);
         unset($password);
         if (!$result['success']) {
             // Refresh session CSRF after each credential attempt.
-            $state['logins'][$id]['csrf'] = bin2hex(random_bytes(32));
             $error = $result['error'] ?: $this->settings->failMsg;
-            return ['success'=>false, 'error'=>$error, 'error_key'=>$this->surveyMlmErrorKey($error, $this->settings),
-                'csrf'=>$state['logins'][$id]['csrf']];
+            return $this->retrySurveyLogin($state, $id, $error, $this->surveyMlmErrorKey($error, $this->settings));
         }
         $this->rotateSurveySession();
         unset($state['logins'][$id]);
         $scope['record'] = $result['record'] === null ? null : (string)$result['record'];
-        $grant = ['username' => $username, 'method' => $result['method'], 'revision' => $login['revision'],
+        $grant = ['username' => $username, 'method' => $result['method'], 'revision' => $returning ? $this->surveyPolicyRevision($scope) : $login['revision'],
             'issued' => time(), 'last' => time(), 'expires' => time() + self::ABSOLUTE_TTL,
             'authentication_values' => $result['authentication_values'] ?? []];
         if ($grant['method'] === 'Table') $grant['account_revision'] = $this->surveyAccountRevision($username);
-        $returnOnly = ($login['purpose'] ?? 'survey') === 'return';
+        $returnOnly = ($login['purpose'] ?? 'survey') === 'return' && !$returning;
         if ($returnOnly) {
             $grant['purpose'] = 'return';
             $grant['expires'] = time() + self::LOGIN_TTL;
@@ -496,11 +525,22 @@ trait SurveySessionAuth
         $state['grants'][$returnOnly ? $this->surveyReturnKey($scope) : $this->surveyScopeKey($scope, $id)] = $grant;
         while (count($state['grants']) > 32) array_shift($state['grants']);
         $destination = $scope['record'] === null ? $login['destination'].'&__sa_flow='.$id : $this->surveyPath($result['targetUrl']);
-        if (!$returnOnly) $destination = $this->appendSurveyLoginPrefill($destination, $login['prefill'] ?? []);
+        if (!$returnOnly && !$returning) $destination = $this->appendSurveyLoginPrefill($destination, $login['prefill'] ?? []);
         if ($returnOnly) $destination = $login['destination'];
-        if (!empty($login['return'])) $destination .= '&__return=1';
+        if (!empty($login['return']) && !$returning) $destination .= '&__return=1';
         if (!empty($login['new'])) $destination .= '&new';
-        return ['success'=>true, 'redirect'=>$destination];
+        $response = ['success'=>true, 'redirect'=>$destination];
+        // The browser sends this already-validated public return code directly to
+        // REDCap in one same-origin POST. This enters core's continuation flow
+        // without adding the code to a URL or showing its duplicate prompt.
+        if ($returning) $response['post_return_code'] = true;
+        return $response;
+    }
+
+    private function retrySurveyLogin(array &$state, string $id, string $error, ?string $errorKey): array
+    {
+        $state['logins'][$id]['csrf'] = bin2hex(random_bytes(32));
+        return ['success'=>false, 'error'=>$error, 'error_key'=>$errorKey, 'csrf'=>$state['logins'][$id]['csrf']];
     }
 
     /** Return only first-page, non-authentication field values from an initial survey URL. */

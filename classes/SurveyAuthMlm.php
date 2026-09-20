@@ -19,6 +19,7 @@ trait SurveyAuthMlm
             'login.username_label' => ['label' => 'Username label', 'value' => (string)$settings->usernameLabel, 'html' => false],
             'login.password_label' => ['label' => 'Password label', 'value' => (string)$settings->passwordLabel, 'html' => false],
             'login.submit_label' => ['label' => 'Submit button', 'value' => (string)$settings->submitLabel, 'html' => false],
+            'login.return_code_invalid' => ['label' => 'Invalid return-code message', 'value' => 'Invalid username, password, or return code.', 'html' => false],
             'login.failure' => ['label' => 'Invalid-login message', 'value' => (string)$settings->failMsg, 'html' => false],
             'login.lockout' => ['label' => 'Lockout message', 'value' => (string)$settings->lockoutMsg, 'html' => false],
             'login.technical_error' => ['label' => 'Technical-error message', 'value' => (string)$settings->errorMsg, 'html' => false],
@@ -29,6 +30,22 @@ trait SurveyAuthMlm
             'login.start_over' => ['label' => 'Start-over reauthentication message', 'value' => 'Sign in again before starting over so authentication values can be restored. Then choose Start over again.', 'html' => false],
             'login.unsaved_submission' => ['label' => 'Unsaved-submission message', 'value' => 'Your submission was not saved. Sign in to reopen the survey. Unsaved answers are not restored automatically; use your browser Back button to recover them if available. Uploaded files may need to be selected again.', 'html' => false],
         ];
+    }
+
+    /** @return array<string, string> */
+    private function surveyMlmCoreReturnStrings(): array
+    {
+        $fallbacks = [
+            'survey_22' => 'Returning?',
+            'survey_118' => 'Return Code',
+            'survey_24' => 'If you have already completed part of the survey, you may continue where you left off. All you need is the return code given to you previously. Click the link below to begin entering your return code and continue the survey.',
+        ];
+        foreach ($fallbacks as $key => $fallback) {
+            if (is_string($GLOBALS['lang'][$key] ?? null) && trim($GLOBALS['lang'][$key]) !== '') {
+                $fallbacks[$key] = $GLOBALS['lang'][$key];
+            }
+        }
+        return $fallbacks;
     }
 
     private function surveyMlmHasActionTag($annotation): bool
@@ -192,18 +209,20 @@ trait SurveyAuthMlm
     }
 
     /**
-     * @return array{enabled:bool,current:string,html_lang:string,rtl:bool,strings:array<string,string>,languages:array<string, array<string,mixed>>}
+     * @return array{enabled:bool,current:string,html_lang:string,rtl:bool,strings:array<string,string>,core_strings:array<string,string>,languages:array<string, array<string,mixed>>}
      */
     private function surveyMlmLoginPresentation(array $scope, SurveyAuthSettings $settings, string $surveyTitle = ''): array
     {
         $items = $this->surveyMlmLoginItems($settings);
         $strings = array_map(fn($item) => $this->surveyMlmSanitizeItem($item, $item['value']), $items);
+        $coreStrings = $this->surveyMlmCoreReturnStrings();
         $default = [
             'enabled' => false,
             'current' => '',
             'html_lang' => 'en',
             'rtl' => false,
             'strings' => $strings,
+            'core_strings' => $coreStrings,
             'languages' => [],
         ];
         $projectId = (int)($scope['project_id'] ?? 0);
@@ -238,6 +257,7 @@ trait SurveyAuthMlm
             }
             $translatedSurveyTitle = $surveyTitle;
             $translatedLogoAlt = 'Survey logo';
+            $translatedCoreStrings = $coreStrings;
             try {
                 $translationContext = \REDCap\Context::Builder($context)->lang_id($languageId)->Build();
                 if ($surveyTitle !== '') {
@@ -246,6 +266,10 @@ trait SurveyAuthMlm
                 }
                 $logoAlt = $mlm::getDDTranslation($translationContext, 'survey-logo_alt_text', $form);
                 if (is_string($logoAlt) && trim(strip_tags($logoAlt)) !== '') $translatedLogoAlt = strip_tags($logoAlt);
+                foreach (array_keys($coreStrings) as $key) {
+                    $translation = $mlm::getUITranslation($translationContext, $key);
+                    if (is_string($translation) && trim($translation) !== '') $translatedCoreStrings[$key] = $translation;
+                }
             } catch (\Throwable $e) {
                 // The login continues safely with the reference title and logo description.
             }
@@ -255,6 +279,7 @@ trait SurveyAuthMlm
                 'rtl' => $language['rtl'],
                 'survey_title' => $translatedSurveyTitle,
                 'survey_logo_alt' => $translatedLogoAlt,
+                'core_strings' => $translatedCoreStrings,
                 'strings' => $resolved,
             ];
         }
@@ -264,6 +289,7 @@ trait SurveyAuthMlm
             'html_lang' => $catalogue[$current]['html_lang'],
             'rtl' => $catalogue[$current]['rtl'],
             'strings' => $catalogue[$current]['strings'],
+            'core_strings' => $catalogue[$current]['core_strings'],
             'languages' => $catalogue,
         ];
     }

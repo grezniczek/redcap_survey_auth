@@ -26,9 +26,9 @@ The editor lists all project-active MLM languages and provides one autosizing te
 - login heading and instructions;
 - username, password, and submit labels;
 - invalid-login, lockout, and technical-error messages; and
-- cookie-required, expired-login, browser-communication, JavaScript-required, Start over reauthentication, and unsaved-submission messages.
+- cookie-required, expired-login, browser-communication, JavaScript-required, Start over reauthentication, unsaved-submission, and invalid-return-code messages.
 
-There is no language-selector label item. The survey title and custom survey-logo alternative text are already MLM survey metadata items (`survey-title` and `survey-logo_alt_text`), so Survey Auth does not duplicate them.
+There is no language-selector label item. The survey title and custom survey-logo alternative text are already MLM survey metadata items (`survey-title` and `survey-logo_alt_text`), so Survey Auth does not duplicate them. Likewise, Returning?, Return Code, and the standard return-code help text use MLM core UI translations (`survey_22`, `survey_118`, and `survey_24`), not module-owned overrides.
 
 ## Runtime behavior
 
