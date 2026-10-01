@@ -44,7 +44,7 @@ These suites do not need a REDCap bootstrap, database, credentials or web server
 | Area changed | Relevant suites in `tests/` |
 | --- | --- |
 | Action tags and selector routing | `security-regressions.php` |
-| Survey scopes, return and completion | `session-regressions.php`, `session-rotation-regressions.php` |
+| Survey session naming, scopes, return and completion | `session-name-regressions.php`, `session-regressions.php`, `session-rotation-regressions.php` |
 | File-route authorization boundary | `file-scope-regressions.php` |
 | Dashboard/report grant lifecycle | `public-resource-regressions.php` |
 | Endpoint configuration and classification | `endpoint-settings-regressions.php` |

@@ -19,7 +19,7 @@ define('PAGE', 'surveys/index.php');
 define('APP_PATH_SURVEY_FULL', 'https://survey.example/surveys/');
 class Session {
     const cookie_name_survey_prefix = 'survey';
-    static function init($name) { if (session_status() !== PHP_SESSION_ACTIVE) { session_name($name); session_start(); } }
+    static function init($name) { if (session_status() !== PHP_SESSION_ACTIVE) { session_name($name); return session_start(); } return true; }
 }
 class REDCap {
     public static $dictionary=[['field_name'=>'auth','field_annotation'=>'@SURVEY-AUTH(success=1)']];
