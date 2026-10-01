@@ -4,6 +4,7 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
+| 2.3.1 | Fix survey session compatibility across older REDCap versions and current standard/17.3 LTS releases, including root-path and separate-endpoint layouts; preserve active survey sessions and replace the misleading cookies-required error message. |
 | 2.3.0 | Safely retain allowlisted first-page URL-prefill values across survey login; add return-code entry to public survey login when Save & Return is enabled, preserving authenticated continuation with Allow writing and without a duplicate return-code prompt; revised README.md. |
 | 2.2.1 | Further security hardening. |
 | 2.2.0 | Harden security, survey metadata, endpoint classification, custom credentials, action-tag parsing and participant content rendering; MLM translation support. See README for session lifetimes and configuration behavior. |
