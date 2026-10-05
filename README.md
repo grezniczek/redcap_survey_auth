@@ -37,8 +37,10 @@ Install Survey Auth through REDCap's External Modules Manager, either from the C
 
 ### Project-Level Settings
 
-- **Logging:** Determines which authentication attempts the module records in the project log. Only REDCap superusers can change this setting. It does not disable REDCap's own page-view or data-change logging.
-  - _None:_ No module authentication log entries will be produced.
+- **Logging:** Technical authentication/authorization errors are always recorded in the External Module logs, independently of this setting. Diagnostics include the failure stage, exception location and trace without arguments, and available LDAP error codes, server diagnostics, warnings, and connection options. Submitted credentials, return codes, and configured bind credentials are redacted; participants receive only the generic error message. If module logging fails, sanitized diagnostics fall back to the PHP error log.
+
+  This setting determines which authentication attempts the module records in the project log. Only REDCap superusers can change this setting. It does not disable REDCap's own page-view or data-change logging.
+  - _None:_ No authentication-attempt entries will be produced in the project log.
   - _Failed attempts only:_ Log entries will be produced for failed login attempts only.
   - _Successful attempts:_ Log entries will be produced for successful logins.
   - _All:_ Log entries will be produced for both types of events.

@@ -7,24 +7,39 @@ namespace {
 if (extension_loaded('ldap')) throw new RuntimeException('Run this isolated transport test with php -n.');
 require __DIR__.'/session-regressions.php';
 define('APP_PATH_WEBTOOLS',__DIR__.'/fixtures/');
+define('LDAP_OPT_DIAGNOSTIC_MESSAGE',50);
 define('LDAP_OPT_PROTOCOL_VERSION',17); define('LDAP_OPT_REFERRALS',8);
 class FakeLDAP {
     public static $servers=[], $redcapConfigs=[], $calls=[], $results=[], $closed=[];
+    public static $errno=49, $diagnostic='directory diagnostic';
     public static $tableSuccess=false, $transport=[], $optionSuccess=true, $tlsSuccess=true;
     public static function reset() { self::$calls=self::$results=self::$closed=self::$transport=[]; }
     public static function result($entries) { $r=(object)['entries'=>$entries,'freed'=>false];self::$results[]=$r;return $r; }
 }
 function ldap_connect($url) { FakeLDAP::$calls[]=$url;return (object)['url'=>$url]; }
 function ldap_set_option($ldap,$option,$value) { FakeLDAP::$transport[]=['option',$option,$value]; return FakeLDAP::$optionSuccess; }
-function ldap_start_tls($ldap) { FakeLDAP::$transport[]=['tls'];return FakeLDAP::$tlsSuccess; }
-function ldap_get_option($ldap,$option,&$value) { $value=2; return true; }
+function ldap_start_tls($ldap) {
+    FakeLDAP::$transport[]=['tls'];
+    if (!FakeLDAP::$tlsSuccess) {
+        // Simulate the native E_WARNING callback, including credentials in a diagnostic.
+        $handler=set_error_handler(static fn()=>false);restore_error_handler();
+        $handler(E_WARNING,'ldap_start_tls(): Certificate verification failed for user with correct',__FILE__,__LINE__);
+    }
+    return FakeLDAP::$tlsSuccess;
+}
+function ldap_get_option($ldap,$option,&$value) { $value=FakeLDAP::$diagnostic; return true; }
+function ldap_errno($ldap) { return FakeLDAP::$errno; }
+function ldap_error($ldap) { return FakeLDAP::$errno===49 ? 'Invalid credentials' : 'Cannot contact LDAP server'; }
 function ldap_bind($ldap,$dn=null,$password=null) {
     FakeLDAP::$transport[]=['bind'];
+    if (!empty(FakeLDAP::$servers[$ldap->url]['service_failure'])) return false;
+    if ($dn==='cn=private-service,dc=test') return true;
     if ($dn===null) return true;
     return $password==='correct' && in_array($dn,FakeLDAP::$servers[$ldap->url]['accept']??[],true);
 }
 function ldap_search($ldap,$base,$filter,$attributes) {
     $s=FakeLDAP::$servers[$ldap->url];
+    if (!empty($s[str_contains($filter,'cn=allowed') ? 'group_failure' : 'search_failure'])) return false;
     return FakeLDAP::result(str_contains($filter,'cn=allowed') ? ($s['group']??[]) : $s['entries']);
 }
 function ldap_list(...$args) { return ldap_search(...$args); }
@@ -117,5 +132,46 @@ foreach ([['version'=>2], ['version'=>'invalid'], ['start_tls'=>'false'], ['vers
         'Invalid protocol, TLS configuration, option failure or failed TLS never sends bind credentials');
 }
 FakeLDAP::$optionSuccess=FakeLDAP::$tlsSuccess=true;
-echo "Passed backend precedence, LDAP isolation, group denial, and handle-lifetime regressions.\n";
+// LDAP diagnostics distinguish operational errors from rejected credentials.
+$module->framework=new class {
+ public $logs=[];
+ public function log($message,$parameters) { $this->logs[]=[$message,$parameters]; }
+};
+FakeLDAP::$errno=-1;
+$bindSecret='BIND_PASSWORD_DO_NOT_LOG';$bindDn='cn=private-service,dc=test';
+FakeLDAP::$diagnostic='TLS/connection failure for user with correct '.$bindSecret.' '.$bindDn;
+foreach (['StartTLS','service bind','user search','user bind','group membership search'] as $stage) {
+ FakeLDAP::reset();FakeLDAP::$tlsSuccess=$stage!=='StartTLS';
+ FakeLDAP::$servers['ldap://diagnostics.test:389']=['entries'=>[entry('good')],
+  'accept'=>$stage==='user bind' ? [$bindDn] : ['good',$bindDn],
+  'service_failure'=>$stage==='service bind', 'search_failure'=>$stage==='user search',
+  'group_failure'=>$stage==='group membership search'];
+ $cfg=array_replace(config('diagnostics.test',$stage==='group membership search'?'allowed':''),
+  ['start_tls'=>$stage==='StartTLS','binddn'=>$bindDn,'bindpw'=>$bindSecret]);
+ $r=['success'=>false,'log_error'=>[]];
+ (new ReflectionMethod($module,'doLDAPauth'))->invokeArgs($module,['user','correct',$cfg,&$r]);
+ check(!$r['success'] && count($r['log_error'])===1,'Each operational failure returns technical diagnostics');
+ $detail=$r['log_error'][0];
+ // The supplied username is also a substring of two stage labels; compare the redacted label.
+ $expectedStage=callPrivate($module,'redactDiagnostic',$stage);
+ $parsed=json_decode(substr($detail,strlen('LDAP error: ')),true,512,JSON_THROW_ON_ERROR);
+ check($parsed['stage']===$expectedStage && $parsed['endpoint']==='ldap://diagnostics.test:389' &&
+  $parsed['ldap_errno']===-1 && str_contains($parsed['ldap_diagnostic'],'TLS/connection failure'),
+  'LDAP diagnostics identify stage, effective endpoint, code, and server diagnostic');
+ if ($stage==='StartTLS') check(str_contains($parsed['warnings'][0]['message'],'Certificate verification failed') &&
+  !str_contains($parsed['warnings'][0]['message'],'correct'),'LDAP warnings are captured and redacted');
+ foreach (['correct',$bindSecret,$bindDn] as $secret) {
+  check(!str_contains($detail,$secret),'LDAP diagnostics exclude submitted and configured credentials');
+ }
+ (new ReflectionMethod($module,'logAuthenticationErrors'))->invokeArgs($module,[&$r,'survey authentication',87]);
+ check(end($module->framework->logs)[1]['project_id']===87,'LDAP failures reach project-scoped module logs');
+ foreach(FakeLDAP::$results as $handle) check($handle->freed,'Failed operations release results');
+ check(count(FakeLDAP::$closed)===1,'Failed operations close the connection');
+}
+FakeLDAP::$tlsSuccess=true;FakeLDAP::$errno=49;
+FakeLDAP::$servers['ldap://diagnostics.test:389']=['entries'=>[entry('good')],'accept'=>[]];
+$r=['success'=>false,'log_error'=>[]];
+(new ReflectionMethod($module,'doLDAPauth'))->invokeArgs($module,['user','wrong',config('diagnostics.test'),&$r]);
+check(!$r['success'] && !$r['log_error'],'Invalid credentials remain a normal denial');
+echo "Passed LDAP diagnostics, credential exclusion, backend precedence, LDAP isolation, group denial, and handle-lifetime regressions.\n";
 }

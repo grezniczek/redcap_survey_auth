@@ -4,6 +4,7 @@ namespace DE\RUB\SurveyAuthExternalModule;
 
 use ExternalModules\AbstractExternalModule;
 
+require_once "classes/AuthenticationDiagnostics.php";
 require_once "classes/SurveyAuthSettings.php";
 require_once "classes/SurveyAuthInfo.php";
 require_once "classes/SurveySessionAuth.php";
@@ -14,6 +15,7 @@ require_once "classes/SurveyAuthMlm.php";
  * ExternalModule class for survey authentication.
  */
 class SurveyAuthExternalModule extends AbstractExternalModule {
+    use AuthenticationDiagnostics;
     use SurveySessionAuth;
     use PublicResourceAuth;
     use SurveyAuthMlm;
@@ -667,16 +669,18 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             "error" => null,
             "log_error" => [],
         );
-        $ip = $_SERVER["REMOTE_ADDR"];
+        $this->rememberDiagnosticSecrets([$username, strtolower(trim($username)), strtoupper(trim($username)), $password]);
+        $ip = $_SERVER["REMOTE_ADDR"] ?? null;
 
         try {
             $this->authenticateWithLockout($username, $password, $result);
         }
-        catch (\Exception $e) {
+        catch (\Throwable $e) {
             $result["success"] = false;
             $result["error"] = $this->settings->errorMsg;
-            $result["log_error"][] = $e->getMessage();
+            $result["log_error"][] = $this->technicalException($e);
         }
+        $this->logAuthenticationErrors($result, 'public resource authentication', $project_id);
         // Write a log entry.
         if ($this->settings->log == "all" || ($this->settings->log == "fail" && !$result["success"]) || ($this->settings->log == "success" && $result["success"])) {
             $changes = "$log_title: " . ($result["success"] ? "Successful authentication via {$result["method"]}" : "Failed or denied login attempt (IP: {$ip})");
@@ -702,7 +706,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             "error" => null,
             "log_error" => array()
         );
-        $ip = $_SERVER["REMOTE_ADDR"];
+        $this->rememberDiagnosticSecrets([$username, strtolower(trim($username)), strtoupper(trim($username)), $password]);
+        $ip = $_SERVER["REMOTE_ADDR"] ?? null;
 
 
         try {
@@ -712,11 +717,12 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 $record = $result['record'] ?? $record;
             }
         }
-        catch (\Exception $e) {
+        catch (\Throwable $e) {
             $result["success"] = false;
             $result["error"] = $this->settings->errorMsg;
-            $result["log_error"][] = $e->getMessage();
+            $result["log_error"][] = $this->technicalException($e);
         }
+        $this->logAuthenticationErrors($result, 'survey authentication', $project_id);
         // Write a log entry.
         if ($this->settings->log == "all" || ($this->settings->log == "fail" && !$result["success"]) || ($this->settings->log == "success" && $result["success"])) {
             $changes = $result["success"] ? "Successful authentication via {$result["method"]}" : "Failed or denied login attempt (IP: {$ip})";
@@ -933,13 +939,13 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                     $result["email"] = $ui["user_email"];
                     $result["fullname"] = trim("{$ui["user_firstname"]} {$ui["user_lastname"]}");
                 }
-                catch (\Exception $e) {
-                    $result["log_error"][] = $e->getMessage();
+                catch (\Throwable $e) {
+                    $result["log_error"][] = $this->technicalException($e);
                 }
             }
         }
-        catch (\Exception $e) {
-            $result["log_error"][] = $e->getMessage();
+        catch (\Throwable $e) {
+            $result["log_error"][] = $this->technicalException($e);
         }
     }
 
@@ -1019,27 +1025,52 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $result['log_error'][] = 'LDAP extension not loaded.';
             return;
         }
-        $config = $this->mergeLDAPConfig($config);
+        $this->rememberDiagnosticSecrets([$username, strtolower(trim($username)), strtoupper(trim($username)), $password]);
         $ldap = $search = $read = null;
+        $stage = 'configuration';
+        $endpoint = null;
+        $warnings = [];
+        $previousHandler = set_error_handler(function ($severity, $message, $file, $line) use (&$warnings, &$previousHandler) {
+            if (str_starts_with($message, 'ldap_')) {
+                $warnings[] = ['message'=>$message, 'file'=>$file, 'line'=>$line];
+                return true;
+            }
+            return $previousHandler ? $previousHandler($severity, $message, $file, $line) : false;
+        }, E_WARNING);
         try {
-            $ldap = ldap_connect($this->ldapConnectionUri($config));
+            if (!is_array($config)) throw new \RuntimeException('Invalid LDAP configuration.');
+            $config = $this->mergeLDAPConfig($config);
+            $this->rememberDiagnosticSecrets([$config['binddn'], $config['bindpw']]);
+            $uri = $this->ldapConnectionUri($config);
+            $parts = parse_url($uri);
+            foreach (['user', 'pass'] as $key) {
+                if (isset($parts[$key])) $this->rememberDiagnosticSecrets([$parts[$key], rawurldecode($parts[$key])]);
+            }
+            $endpoint = $parts['scheme'].'://'.$parts['host'].':'.$parts['port'];
+            $stage = 'connection initialization';
+            $ldap = @ldap_connect($uri);
             if ($ldap === false) throw new \RuntimeException('Failed to connect to LDAP server.');
             if (!in_array($config['version'], [2, 3, '2', '3'], true) || !is_bool($config['start_tls']) ||
                 ($config['start_tls'] && (int)$config['version'] !== 3)) {
                 throw new \RuntimeException('Invalid LDAP protocol/TLS configuration.');
             }
+            $stage = 'protocol version';
             if (!@ldap_set_option($ldap, LDAP_OPT_PROTOCOL_VERSION, (int)$config['version'])) {
                 throw new \RuntimeException('Could not set LDAP protocol version.');
             }
+            $stage = 'StartTLS';
             if ($config['start_tls'] && !@ldap_start_tls($ldap)) {
                 throw new \RuntimeException('Could not start TLS session.');
             }
+            $stage = 'referral options';
             if (is_bool($config['referrals']) && !@ldap_set_option($ldap, LDAP_OPT_REFERRALS, $config['referrals'])) {
                 throw new \RuntimeException('Could not change LDAP referral options.');
             }
+            $stage = 'service bind';
             $bound = strlen($config['binddn']) && strlen($config['bindpw'])
                 ? @ldap_bind($ldap, $config['binddn'], $config['bindpw']) : @ldap_bind($ldap);
             if (!$bound) throw new \RuntimeException('LDAP service bind failed.');
+            $stage = 'base DN discovery';
             $this->checkBaseDN($ldap, $config);
             $searchUsername = $username;
             // Browser form values already use UTF-8, as required by LDAP v3.
@@ -1047,17 +1078,27 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             $base = $config['userdn'];
             if ($base !== '' && substr($base, -1) !== ',') $base .= ',';
             $base .= $config['basedn'];
+            $stage = 'user search';
             $search = match ($config['userscope']) {
                 'one' => @ldap_list($ldap, $base, $filter, $config['attributes']),
                 'base' => @ldap_read($ldap, $base, $filter, $config['attributes']),
                 default => @ldap_search($ldap, $base, $filter, $config['attributes'])
             };
-            if ($search === false) return;
+            if ($search === false) throw new \RuntimeException('LDAP user search failed.');
             for ($entry = @ldap_first_entry($ldap, $search); $entry !== false; $entry = @ldap_next_entry($ldap, $entry)) {
                 $dn = @ldap_get_dn($ldap, $entry);
+                $this->rememberDiagnosticSecrets([$dn]);
                 $identity = $this->ldapIdentity($ldap, $entry);
-                if (!@ldap_bind($ldap, $dn, $password)) continue;
+                $stage = 'user bind';
+                if (!@ldap_bind($ldap, $dn, $password)) {
+                    if (function_exists('ldap_errno') && ldap_errno($ldap) !== 49) {
+                        throw new \RuntimeException('LDAP user bind failed.');
+                    }
+                    continue;
+                }
+                $stage = 'group membership search';
                 if (strlen($config['group']) && !$this->checkGroup($ldap, $config, $config['memberisdn'] ? $dn : $searchUsername)) continue;
+                $stage = 'identity read';
                 $read = @ldap_read($ldap, $dn, $filter, $config['attributes']);
                 if ($read !== false) {
                     for ($userEntry = @ldap_first_entry($ldap, $read); $userEntry !== false; $userEntry = @ldap_next_entry($ldap, $userEntry)) {
@@ -1068,6 +1109,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                         break;
                     }
                 }
+                $stage = 'table identity fallback';
                 if ($this->settings->fallbackToTableUserInfo && (empty($identity['fullname']) || empty($identity['email']))) {
                     $q = $this->framework->query('SELECT user_email, user_firstname, user_lastname FROM redcap_user_information WHERE username=? LIMIT 1', [$username]);
                     if ($row = $q->fetch_assoc()) {
@@ -1079,12 +1121,28 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
                 return;
             }
         } catch (\Throwable $e) {
-            $result['log_error'][] = 'LDAP error: '.$e->getMessage();
-        } finally {
-            foreach ([$read, $search] as $handle) {
-                if ($handle !== null && $handle !== false) @ldap_free_result($handle);
+            $diagnostic = null;
+            if ($ldap !== null && $ldap !== false && defined('LDAP_OPT_DIAGNOSTIC_MESSAGE')) {
+                @ldap_get_option($ldap, LDAP_OPT_DIAGNOSTIC_MESSAGE, $diagnostic);
             }
-            if ($ldap !== null && $ldap !== false) @ldap_unbind($ldap);
+            $details = ['stage'=>$stage, 'endpoint'=>$endpoint,
+                'configuration'=>array_intersect_key(is_array($config) ? $config : [], array_flip([
+                    'version', 'start_tls', 'referrals', 'basedn', 'userdn', 'userscope', 'userattr',
+                    'attributes', 'groupdn', 'groupscope', 'groupattr', 'memberattr', 'memberisdn'])),
+                'ldap_errno'=>$ldap && function_exists('ldap_errno') ? @ldap_errno($ldap) : null,
+                'ldap_error'=>$ldap && function_exists('ldap_error') ? @ldap_error($ldap) : null,
+                'ldap_diagnostic'=>$diagnostic, 'warnings'=>$warnings, 'exception'=>$this->technicalException($e)];
+            $result['log_error'][] = 'LDAP error: '.$this->redactDiagnostic(json_encode($details,
+                JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR));
+        } finally {
+            try {
+                foreach ([$read, $search] as $handle) {
+                    if ($handle !== null && $handle !== false) @ldap_free_result($handle);
+                }
+                if ($ldap !== null && $ldap !== false) @ldap_unbind($ldap);
+            } finally {
+                restore_error_handler();
+            }
         }
     }
 
@@ -1204,8 +1262,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             @ldap_free_result($resultId);
             return $member;
         }
-        // User is not a member of the group.
-        return false;
+        throw new \RuntimeException('LDAP group membership search failed.');
     }
 
     //endregion

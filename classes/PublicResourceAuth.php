@@ -71,6 +71,7 @@ trait PublicResourceAuth
             $this->renderSurveyLogin($id);
             $this->exitAfterHook();
         } catch (\Throwable $e) {
+            $this->logTechnicalError('public resource authorization', $this->technicalException($e), $projectId);
             $this->surveyStop('Resource authorization could not be checked. Please contact the project administrator.', 503);
         }
     }

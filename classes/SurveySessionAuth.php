@@ -289,6 +289,7 @@ trait SurveySessionAuth
             }
             $this->exitAfterHook();
         } catch (\Throwable $e) {
+            $this->logTechnicalError('survey authorization', $this->technicalException($e), $projectId);
             $this->surveyStop('Survey authorization could not be checked. Please contact the survey administrator.', 503);
         }
     }
@@ -440,7 +441,9 @@ trait SurveySessionAuth
         try {
             return $this->processSurveyLogin($payload);
         } catch (\Throwable $e) {
-            // Do not expose backend exceptions (or their credential arguments) to AJAX logs.
+            $this->rememberDiagnosticSecrets(array_values($payload));
+            $this->logTechnicalError('login AJAX', $this->technicalException($e), $project_id);
+            // Keep diagnostics in module logs; return only the generic participant message.
             return ['success'=>false, 'error'=>'Login could not be completed. Please contact the administrator.', 'error_key'=>'login.ajax_error'];
         }
     }
@@ -450,7 +453,13 @@ trait SurveySessionAuth
     {
         $payload = $_POST;
         unset($_POST['username'], $_POST['password']);
-        $result = $this->processSurveyLogin($payload);
+        try {
+            $result = $this->processSurveyLogin($payload);
+        } catch (\Throwable $e) {
+            $this->rememberDiagnosticSecrets(array_values($payload));
+            $this->logTechnicalError('legacy survey login', $this->technicalException($e), $this->framework->getProjectId());
+            $result = ['success'=>false, 'error'=>'Login could not be completed. Please contact the administrator.'];
+        }
         if ($result['success']) {
             header('Location: '.$result['redirect'], true, 303);
         } elseif (isset($result['csrf'])) {
@@ -466,6 +475,7 @@ trait SurveySessionAuth
         header('Cache-Control: no-store');
         header('Referrer-Policy: no-referrer');
         if (!$this->surveySessionReady()) {
+            $this->logTechnicalError('login session initialization', 'The survey session could not be initialized.', $this->framework->getProjectId());
             return ['success'=>false, 'error'=>'The survey session could not be initialized. Please contact the administrator.', 'error_key'=>'login.cookie_required'];
         }
         $id = $payload['context'] ?? '';
@@ -678,6 +688,7 @@ trait SurveySessionAuth
             if (!is_array($result) || !empty($result['errors'])) throw new \RuntimeException('Metadata restoration failed.');
             $this->framework->redirectAfterHook($this->surveyPath(APP_PATH_SURVEY_FULL).'?s='.rawurlencode($hash), true);
         } catch (\Throwable $e) {
+            $this->logTechnicalError('restore authentication values', $this->technicalException($e), $scope['project_id'] ?? null);
             $state =& $this->surveySession();
             unset($state['grants'][$request['key']]);
             $this->surveyStop('The survey was reset, but authentication values could not be restored. Please reopen the survey and sign in again.', 503);

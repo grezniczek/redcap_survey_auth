@@ -72,7 +72,7 @@ class LoginFixture extends \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalMo
     public function authenticate($username,$password,$project_id,$instrument,$event_id,$repeat_instance,$record,$writeAuthenticationData=true) {
         $this->attempts++;
         $this->authenticationCalls[]=[$project_id,$instrument,$event_id,$repeat_instance,$record,$writeAuthenticationData];
-        if ($this->throw) throw new \RuntimeException('synthetic backend secret');
+        if ($this->throw) throw new \RuntimeException('synthetic backend secret '.$username.' '.$password);
         return ['success'=>$username==='fixture' && $password==='correct', 'error'=>'Denied', 'method'=>'Custom',
             'record'=>$record, 'targetUrl'=>$record === null ? '/surveys/?s=public' : '/surveys/?s=private',
             'authentication_values'=>['auth'=>'1','auth_user'=>$username]];
@@ -83,6 +83,8 @@ class LoginFixture extends \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalMo
 }
 $module=new LoginFixture();
 $module->framework=new class {
+    public $logs=[];
+    public function log($message,$parameters) { $this->logs[]=[$message,$parameters]; }
     public function getProjectId() { return 1; }
     public function initializeJavascriptModuleObject(){}
     public function getJavascriptModuleObjectName(){return 'window.fixture';}
@@ -195,6 +197,12 @@ $payload=loginContext();
 $module->throw=true;
 $r=ajax('survey-login',$payload,1);
 check(!$r['success'] && !str_contains(json_encode($r),'synthetic backend secret'), 'Backend exception details do not escape to framework logs');
+[$message,$parameters]=end($module->framework->logs);
+check($message==='Survey Auth technical error' && $parameters['stage']==='login AJAX' && $parameters['project_id']===1,
+    'AJAX exceptions are recorded in project-scoped module logs');
+check(str_contains($parameters['details'],'synthetic backend secret') && !str_contains($parameters['details'],$payload['password']) &&
+    !str_contains($parameters['details'],$payload['username']) && !str_contains($parameters['details'],'"args"'),
+    'AJAX module diagnostics preserve useful details and redact supplied credentials and trace arguments');
 $module->throw=false;
 $_SESSION['redcap_survey_auth_v2']['logins']['context']['expires']=time()-1;
 check(!ajax('survey-login',$payload,1)['success'], 'Expired login is rejected');

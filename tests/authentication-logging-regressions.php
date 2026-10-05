@@ -3,6 +3,10 @@
 namespace ExternalModules { class AbstractExternalModule { public $PREFIX='fixture'; public $framework; } }
 namespace {
 require dirname(__DIR__).'/SurveyAuthExternalModule.php';
+class User {
+    public static $error;
+    public static function getUserInfo($username) { throw self::$error; }
+}
 class REDCap {
     public static $logs=[];
     public static function logEvent(...$args) { self::$logs[]=$args; }
@@ -16,7 +20,15 @@ class Form {
 }
 function check($ok,$message) { if(!$ok)throw new RuntimeException($message); }
 $module=new \DE\RUB\SurveyAuthExternalModule\SurveyAuthExternalModule();
-$module->framework=new class { public function prefixSettingKey($key) { return $key; } };
+$module->framework=new class {
+    public $logs=[];
+    public $failLogging=false;
+    public function prefixSettingKey($key) { return $key; }
+    public function log($message,$parameters) {
+        if ($this->failLogging) throw new RuntimeException('synthetic logging outage');
+        $this->logs[]=[$message,$parameters];
+    }
+};
 if(!defined('MYSQLI_STORE_RESULT'))define('MYSQLI_STORE_RESULT',0);
 function db_query($sql,...$args) { return new ArrayIterator(str_contains($sql,'GET_LOCK') ? [['acquired'=>1]] : []); }
 function db_fetch_assoc($rows) { if(!$rows->valid())return null; $row=$rows->current();$rows->next();return $row; }
@@ -49,5 +61,47 @@ foreach(['none','fail','success','all'] as $mode) {
 $settings->log='all';$settings->useWhitelist=true;$settings->whitelist=['someone-else'];REDCap::$logs=[];
 $result=$module->authenticate($username,$password,87,'example_survey',123,1,null);
 check(!$result['success'] && count(REDCap::$logs)===1 && REDCap::$logs[0][3]===null,'Denied public-survey attempt logs without a record');
-echo "Passed authentication logging modes, identity, scope, and password exclusion regressions.\n";
+// Technical errors bypass attempt filters and exclude secrets even in nested exceptions.
+$settings->useWhitelist=false;$settings->useCustom=false;$settings->useTable=true;
+$bindPassword='BIND_SECRET_95a';$bindDn='cn=service-secret,dc=test';
+$GLOBALS['ldapdsn']=['url'=>'ldap://fixture','binddn'=>$bindDn,'bindpw'=>$bindPassword];
+$settings->otherLDAPConfigs=[['url'=>'ldap://uri-account:uri-password@fixture']];
+$inner=new RuntimeException('Failure containing '.$password.' '.$bindPassword.' '.$bindDn.' uri-password', 72);
+User::$error=new TypeError('Outer failure '.$username.' uri-account',0,$inner);
+foreach (['none','fail','success','all'] as $mode) {
+ $settings->log=$mode;REDCap::$logs=[];$module->framework->logs=[];
+ $result=$module->authenticate($username,$password,87,'example_survey',123,2,'record-1');
+ check(!$result['success'] && $result['error']==='Error','Technical failures retain the generic participant message');
+ check(count($module->framework->logs)===1,'Technical failures always produce a module log entry');
+ [$message,$parameters]=$module->framework->logs[0];
+ check($message==='Survey Auth technical error' && $parameters['project_id']===87,'Module log uses the correct project');
+ $details=$parameters['details'];
+ check(str_contains($details,'TypeError') && str_contains($details,'RuntimeException') && str_contains($details,'72') && str_contains($details,'trace'),
+   'Chained exception types, codes, locations, and trace metadata are retained');
+ foreach ([$username,$password,$bindPassword,$bindDn,'uri-account','uri-password'] as $secret) {
+  check(!str_contains($details,$secret),'Credentials must be absent from module diagnostics');
+ }
+ check(!str_contains($details,'"args"') && !str_contains($details,'"object"'),'Trace arguments and objects must never be logged');
+ check(!str_contains(json_encode(REDCap::$logs),$password) && !str_contains(json_encode(REDCap::$logs),$bindPassword),
+   'Project diagnostics must also redact passwords');
+}
+// Logging outages retain sanitized diagnostics without replacing the generic response.
+$logFile=tempnam(sys_get_temp_dir(),'survey-auth-log-');
+$previousErrorLog=ini_set('error_log',$logFile);
+try {
+ $module->framework->failLogging=true;
+ (new ReflectionMethod($module,'logTechnicalError'))->invoke($module,'fixture failure',
+     'Diagnostic '.$password.' '.$bindPassword,87);
+ $fallback=file_get_contents($logFile);
+ check(str_contains($fallback,'module logging failed') && str_contains($fallback,'Diagnostic'),
+     'A module logging outage falls back to the PHP error log');
+ check(!str_contains($fallback,$password) && !str_contains($fallback,$bindPassword),
+     'Fallback diagnostics exclude credentials');
+} finally {
+ ini_set('error_log',$previousErrorLog);unlink($logFile);
+ $module->framework->failLogging=false;
+}
+$config=json_decode(file_get_contents(dirname(__DIR__).'/config.json'),true,512,JSON_THROW_ON_ERROR);
+check($config['enable-no-auth-logging']===true,'Framework permits logging on anonymous login pages');
+echo "Passed technical diagnostics, credential redaction, and authentication logging modes, identity, scope, and password exclusion regressions.\n";
 }
