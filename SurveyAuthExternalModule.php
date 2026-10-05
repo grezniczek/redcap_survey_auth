@@ -662,6 +662,15 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
 
     #region Authentication
 
+    /** Quote up to three UTF-8 characters; longer usernames receive a fixed redaction marker. */
+    private function maskedUsernameForLog(string $username): string {
+        $hint = '[REDACTED]';
+        if (preg_match('/^(.{0,3})(.)?/us', $username, $matches) === 1) {
+            $hint = $matches[1].(isset($matches[2]) ? '[REDACTED]' : '');
+        }
+        return json_encode($hint, JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
     function authenticatePublicDashboardOrReport($username, $password, $project_id, $log_title) {
         if (!is_string($username) || !is_string($password)) return ["success" => false, "error" => $this->settings->failMsg];
         $result = array (
@@ -687,7 +696,7 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
             if (count($result["log_error"])) {
                 $changes .= "\n" . join("\n", $result["log_error"]);
             }
-            \Logging::logEvent("", "", "OTHER", null, $changes, "Survey Auth EM", "", "( ".$username." )", $project_id);
+            \Logging::logEvent("", "", "OTHER", null, $changes, "Survey Auth EM", "", "( ".$this->maskedUsernameForLog($username)." )", $project_id);
         }
         // Return result.
         return $result;
@@ -726,9 +735,8 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
         // Write a log entry.
         if ($this->settings->log == "all" || ($this->settings->log == "fail" && !$result["success"]) || ($this->settings->log == "success" && $result["success"])) {
             $changes = $result["success"] ? "Successful authentication via {$result["method"]}" : "Failed or denied login attempt (IP: {$ip})";
-            // Quote submitted identifiers so control characters cannot forge log lines.
-            // A failed attempt identifies only the submitted username, not a verified user.
-            $changes .= "\nSubmitted username: ".json_encode($username, JSON_INVALID_UTF8_SUBSTITUTE);
+            // Retain only a small support hint: the username field may accidentally contain a password.
+            $changes .= "\nSubmitted username: ".$this->maskedUsernameForLog($username);
             $changes .= "\nSurvey: ".json_encode($instrument, JSON_INVALID_UTF8_SUBSTITUTE)."; instance: ".(int)$repeat_instance;
             if (count($result["log_error"])) {
                 $changes .= "\n" . join("\n", $result["log_error"]);

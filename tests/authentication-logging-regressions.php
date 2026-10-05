@@ -14,6 +14,10 @@ class REDCap {
     public static function getRecordIdField() { return 'record_id'; }
     public static function getSurveyLink(...$args) { return 'https://example.test/surveys/?s=fixture'; }
 }
+class Logging {
+    public static $logs=[];
+    public static function logEvent(...$args) { self::$logs[]=$args; }
+}
 class Form {
     public static function replaceIfActionTag($annotation,...$args) { return $annotation; }
     public static function getValueInParenthesesActionTag(...$args) { return ''; }
@@ -40,6 +44,16 @@ $username="Audit User\nforged line";$password='PASSWORD_MUST_NOT_APPEAR_43f1';
 $settings->customCredentials=[strtolower($username)=>$password];
 (new ReflectionProperty($module,'settings'))->setValue($module,$settings);
 $_SERVER['REMOTE_ADDR']='192.0.2.7';$GLOBALS['project_id']=999;
+// Prefixes count UTF-8 characters and remain quoted; short usernames are shown in full.
+$mask=new ReflectionMethod($module,'maskedUsernameForLog');
+foreach ([''=>'','a'=>'a','ab'=>'ab','abc'=>'abc',
+ 'abcd'=>'abc[REDACTED]','rezniczek'=>'rez[REDACTED]','ÄÖÜx'=>'ÄÖÜ[REDACTED]',
+ "a\nbc"=>"a\nb[REDACTED]",'"abc'=>'"ab[REDACTED]',"\xffabc"=>'[REDACTED]'] as $input=>$expected) {
+ $actual=$mask->invoke($module,$input);
+ check($actual===json_encode($expected,JSON_INVALID_UTF8_SUBSTITUTE),
+   'Username hints show short values, mask longer values, and quote Unicode safely');
+ check(!str_contains($actual,"\n"),'Username hints cannot inject log lines');
+}
 foreach(['none','fail','success','all'] as $mode) {
  $settings->log=$mode;
  foreach([false,true] as $success) {
@@ -51,11 +65,35 @@ foreach(['none','fail','success','all'] as $mode) {
   if(!$expected)continue;
   [$description,$details,$sql,$record,$event,$project]=REDCap::$logs[0];
   check($description==='Survey Auth EM' && $record==='record-1' && $event===123 && $project===87,'Log must use the authenticated scope, not the global project');
-  check(str_contains($details,'Submitted username: '.json_encode($username)),'Submitted identity must be recorded even with writing disabled');
+  check(str_contains($details,'Submitted username: "Aud[REDACTED]"'),'Only the three-character hint is logged, including successful logins');
+  check(!str_contains(json_encode(REDCap::$logs),substr(json_encode($username),1,-1)),
+    'Submitted username must not appear in any project log argument');
   check(!str_contains($details,"\nforged line"),'Username cannot inject a new log line');
   check(str_contains($details,'Survey: "example_survey"; instance: 2'),'Survey and repeat instance must be identifiable');
   check(str_contains($details,$success?'Successful authentication via Custom':'Failed or denied login attempt'),'Outcome must distinguish verified and failed identities');
   check(!str_contains(json_encode(REDCap::$logs),'PASSWORD_MUST_NOT_APPEAR'),'Neither submitted password may enter the log');
+ }
+}
+// Public dashboards/reports also used the submitted value as the log's user argument.
+foreach (['none','fail','success','all'] as $mode) {
+ $settings->log=$mode;
+ foreach (['Public Dashboard 7','Public Report 8'] as $title) {
+  foreach ([false,true] as $success) {
+   Logging::$logs=[];
+   $result=$module->authenticatePublicDashboardOrReport($username,
+     $success?$password:'WRONG_PASSWORD_MUST_NOT_APPEAR',87,$title);
+   $expected=$mode==='all' || ($mode==='success' && $success) || ($mode==='fail' && !$success);
+   check($result['success']===$success && count(Logging::$logs)===($expected?1:0),
+     'Public-resource authentication and logging modes remain unchanged');
+   if (!$expected) continue;
+   check(Logging::$logs[0][7]==='( "Aud[REDACTED]" )' && Logging::$logs[0][8]===87,
+     'Public-resource log actor is redacted and retains the correct project');
+   $serialized=json_encode(Logging::$logs);
+   check(!str_contains($serialized,substr(json_encode($username),1,-1)) &&
+     !str_contains($serialized,'PASSWORD_MUST_NOT_APPEAR'),
+     'Neither username nor password appears in any public-resource log argument');
+   check(str_contains(Logging::$logs[0][4],$title), 'Resource identity remains available for troubleshooting');
+  }
  }
 }
 $settings->log='all';$settings->useWhitelist=true;$settings->whitelist=['someone-else'];REDCap::$logs=[];
