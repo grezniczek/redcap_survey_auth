@@ -23,7 +23,7 @@ trait SurveyAuthMlm
             'login.failure' => ['label' => 'Invalid-login message', 'value' => (string)$settings->failMsg, 'html' => false],
             'login.lockout' => ['label' => 'Lockout message', 'value' => (string)$settings->lockoutMsg, 'html' => false],
             'login.technical_error' => ['label' => 'Technical-error message', 'value' => (string)$settings->errorMsg, 'html' => false],
-            'login.cookie_required' => ['label' => 'Cookies-required message', 'value' => 'A survey session is required. Please enable cookies.', 'html' => false],
+            'login.cookie_required' => ['label' => 'Survey-session error message', 'value' => 'The survey session could not be initialized. Please contact the administrator.', 'html' => false],
             'login.expired' => ['label' => 'Expired-login message', 'value' => 'Login expired or invalid. Please reopen the survey.', 'html' => false],
             'login.ajax_error' => ['label' => 'Browser communication error', 'value' => 'Login could not be completed. Please reopen this page and try again.', 'html' => false],
             'login.javascript_required' => ['label' => 'JavaScript-required message', 'value' => 'JavaScript is required to sign in. Please enable JavaScript and reopen this page.', 'html' => false],

@@ -7,12 +7,27 @@ trait SurveySessionAuth
 
     private function surveySessionReady(): bool
     {
-        // Match Surveys/index.php's entry-point naming, including its root '//'.
-        // Session::getCookieName(true) normalizes that root differently on master.
-        $surveyPath = parse_url(APP_PATH_SURVEY_FULL, PHP_URL_PATH);
-        $name = \Session::cookie_name_survey_prefix.substr(sha1(dirname(rtrim($surveyPath, '/')).'/'), 0, 7);
-        \Session::init($name);
-        return session_status() === PHP_SESSION_ACTIVE && session_name() === $name;
+        $name = method_exists(\Session::class, 'getCookieName') ? \Session::getCookieName(true) : 'survey';
+        $names = [$name];
+        if (defined('Session::cookie_name_survey_prefix')) {
+            // Recent standard/LTS entry points set the name before core bootstrap.
+            // Their root hashes '//' whereas getCookieName(true) may hash '/'.
+            $paths = [parse_url(APP_PATH_SURVEY_FULL, PHP_URL_PATH)];
+            $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+            if (defined('PAGE') && PAGE === 'surveys/index.php' && is_string($requestPath) &&
+                preg_match('~/surveys/(?:index\\.php)?$~', $requestPath)) {
+                // A separate survey endpoint can have a different base path.
+                $paths[] = preg_replace('~index\\.php$~', '', $requestPath);
+            }
+            foreach ($paths as $path) {
+                if (!is_string($path) || $path === '') continue;
+                $names[] = \Session::cookie_name_survey_prefix.substr(sha1(dirname(rtrim($path, '/')).'/'), 0, 7);
+            }
+        }
+        // Keep core's active survey session and its state. Never rename a staff
+        // session or accept an arbitrary name merely sharing the survey prefix.
+        if (session_status() !== PHP_SESSION_ACTIVE && !\Session::init($name)) return false;
+        return session_status() === PHP_SESSION_ACTIVE && in_array(session_name(), $names, true);
     }
 
     private function &surveySession(): array
@@ -133,7 +148,7 @@ trait SurveySessionAuth
         if (!$projectId || !isset($_GET['s'])) return;
         try {
             if (!is_string($_GET['s']) || !$this->surveySessionReady()) {
-                $this->surveyStop('A survey session is required. Please enable cookies.');
+                $this->surveyStop('The survey session could not be initialized. Please contact the administrator.');
                 return;
             }
             $source = $this->surveyScope($projectId, $_GET['s']);
@@ -451,7 +466,7 @@ trait SurveySessionAuth
         header('Cache-Control: no-store');
         header('Referrer-Policy: no-referrer');
         if (!$this->surveySessionReady()) {
-            return ['success'=>false, 'error'=>'A survey session is required. Please enable cookies.', 'error_key'=>'login.cookie_required'];
+            return ['success'=>false, 'error'=>'The survey session could not be initialized. Please contact the administrator.', 'error_key'=>'login.cookie_required'];
         }
         $id = $payload['context'] ?? '';
         $csrf = $payload['csrf'] ?? '';
