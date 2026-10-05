@@ -4,6 +4,7 @@ SurveyAuth EM
 
 Release | Description
 ------- | ---------------------
+| Unreleased | Always log technical authentication and authorization errors in the External Module logs, independently of attempt-logging settings, with credential-safe exception traces and LDAP diagnostics; fall back to the PHP error log if module logging fails. Mask submitted usernames in survey, dashboard, and report attempt logs, including successful logins: show only the first three characters followed by `[REDACTED]` for longer usernames, and show usernames of up to three characters in full. |
 | 2.3.1 | Fix survey session compatibility across older REDCap versions and current standard/17.3 LTS releases, including root-path and separate-endpoint layouts; preserve active survey sessions and replace the misleading cookies-required error message. |
 | 2.3.0 | Safely retain allowlisted first-page URL-prefill values across survey login; add return-code entry to public survey login when Save & Return is enabled, preserving authenticated continuation with Allow writing and without a duplicate return-code prompt; revised README.md. |
 | 2.2.1 | Further security hardening. |
