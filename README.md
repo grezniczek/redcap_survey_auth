@@ -95,7 +95,7 @@ Install Survey Auth through REDCap's External Modules Manager, either from the C
 
   - **LDAP connection settings (LDAP and Other LDAP):** Survey Auth honors the separate `port` setting unless the `url` already contains an explicit port, which takes precedence. The module's default `port` is 389; for LDAPS, explicitly set `port` to 636 or include `:636` in the URL.
 
-    Depending on its version, REDCap's regular login may ignore the separate `port` setting and use the port embedded in the URL or the scheme's default instead. Consequently, a successful REDCap login does not prove that the separate port is correct. For example, with `url="ldap://ldap.example.org"` and `port=636`, REDCap may connect to port 389 while Survey Auth connects to port 636.
+    REDCap's regular login has long ignored the separate `port` setting when `url` is populated; this behavior is present in REDCap 6.10.0, the earliest version checked. Before REDCap 15.5.5, the separate port was used only when `url` was empty and the connection used `host` instead. Since REDCap 15.5.5, the LDAP driver ignores the separate `port` setting entirely, taking the port from the URL or the scheme's default instead. Consequently, a successful REDCap login does not prove that the separate port is correct. For example, with `url="ldap://ldap.example.org"` and `port=636`, REDCap connects to port 389 while Survey Auth connects to port 636.
 
     Use matching scheme, port, and TLS settings (the ports below are conventional; use your directory's actual listener ports):
 
