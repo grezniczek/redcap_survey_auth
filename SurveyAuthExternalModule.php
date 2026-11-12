@@ -5,6 +5,7 @@ namespace DE\RUB\SurveyAuthExternalModule;
 use ExternalModules\AbstractExternalModule;
 
 require_once "classes/AuthenticationDiagnostics.php";
+require_once "classes/RedcapLdapAdapter.php";
 require_once "classes/SurveyAuthSettings.php";
 require_once "classes/SurveyAuthInfo.php";
 require_once "classes/SurveySessionAuth.php";
@@ -969,13 +970,15 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     private function authenticateLDAP($username, $password, &$result) {
+        if ($username === '' || $password === '' || str_contains($username, "\0") || str_contains($password, "\0")) return;
         include APP_PATH_WEBTOOLS . 'ldap/ldap_config.php';
         $configs = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : array();
-        if (array_key_exists("url", $configs)) $configs = array ($configs);
+        if (!is_array($configs)) throw new \RuntimeException('Invalid REDCap LDAP configurations.');
+        if (array_key_exists('url', $configs) || array_key_exists('host', $configs)) $configs = [$configs];
 
         foreach ($configs as $config) {
             $attempt = ['success'=>false, 'username'=>$username, 'email'=>null, 'fullname'=>null, 'log_error'=>[]];
-            $this->doLDAPauth($username, $password, $config, $attempt);
+            $this->doRedcapLDAPauth($username, $password, $config, $attempt);
             $result['log_error'] = array_merge($result['log_error'], $attempt['log_error']);
             if ($attempt['success']) {
                 unset($attempt['log_error']);
@@ -1005,6 +1008,42 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     //region LDAP
+
+    private function doRedcapLDAPauth($username, $password, $config, &$result): void {
+        $result['success'] = false;
+        $result['fullname'] = $result['email'] = null;
+        $adapter = null;
+        $logged = false;
+        $tableFallback = false;
+        try {
+            if (!is_array($config)) throw new \RuntimeException('Invalid REDCap LDAP configuration.');
+            $this->rememberDiagnosticSecrets([$username, strtolower(trim($username)), strtoupper(trim($username)), $password]);
+            $adapter = new RedcapLdapAdapter($config, $this->settings->ldapMappings,
+                function (array $values) { $this->rememberDiagnosticSecrets($values); });
+            $identity = $adapter->authenticate($username, $password);
+            if ($identity === null) return;
+            if ($this->settings->fallbackToTableUserInfo && (empty($identity['fullname']) || empty($identity['email']))) {
+                $tableFallback = true;
+                $q = $this->framework->query('SELECT user_email, user_firstname, user_lastname FROM redcap_user_information WHERE username=? LIMIT 1', [$username]);
+                if ($row = $q->fetch_assoc()) {
+                    if (empty($identity['fullname'])) $identity['fullname'] = trim($row['user_firstname'].' '.$row['user_lastname']);
+                    if (empty($identity['email'])) $identity['email'] = $row['user_email'];
+                }
+            }
+            $result = array_replace($result, $identity, ['success'=>true]);
+        } catch (\Throwable $error) {
+            $details = ($adapter ? $adapter->diagnostics() : ['stage'=>'configuration']) + ['exception'=>$this->technicalException($error)];
+            if ($tableFallback) $details['stage'] = 'table identity fallback';
+            $result['log_error'][] = 'REDCap LDAP error: '.$this->redactDiagnostic(json_encode($details,
+                JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR));
+            $logged = true;
+        } finally {
+            if (!$logged && $adapter && !empty($adapter->diagnostics()['cleanup_errors'])) {
+                $result['log_error'][] = 'REDCap LDAP cleanup error: '.$this->redactDiagnostic(json_encode($adapter->diagnostics(),
+                    JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR));
+            }
+        }
+    }
 
     private function ldapIdentity($ldap, $entry): array {
         // LDAP attribute descriptions are case-insensitive; servers may preserve

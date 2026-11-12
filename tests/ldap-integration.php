@@ -32,6 +32,8 @@ check(!attempt('jörg','fixture-password',['group'=>'allowed'])['success'],'Non-
 check(attempt('jörg')['success'],'UTF-8 username authenticates without double encoding');
 check(attempt('star*user')['success'],'Literal filter metacharacter authenticates');
 check(!attempt('*')['success'],'Wildcard username cannot select another entry');
+check(attempt('Retry User','fixture-password',['userattr'=>'cn','try_all'=>true])['success'],
+ 'Other LDAP still advances to a later accepted entry independently of the core driver');
 check(!attempt('alice','fixture-password',['bindpw'=>'wrong'])['success'],'Failed service bind denied');
 $settings->fallbackToTableUserInfo=true;
 $module->framework=new class {

@@ -30,7 +30,7 @@ Run from the module root. Each suite runs in its own PHP process because fixture
 set -eu
 for test in tests/*regressions.php; do
     case "$test" in
-        tests/ldap-regressions.php) php -n "$test" ;;
+        tests/ldap-regressions.php|tests/ldap-core-regressions.php) php -n "$test" ;;
         *) php "$test" ;;
     esac
 done
@@ -55,7 +55,8 @@ These suites do not need a REDCap bootstrap, database, credentials or web server
 | Metadata saves, Start over and repeat structures | `metadata-write-regressions.php`, `metadata-integrity-regressions.php`, `start-over-regressions.php` |
 | Table login and grant revocation | `table-account-regressions.php` |
 | Lockout expiry and synchronization | `lockout-regressions.php`, `lockout-storage-regressions.php`, `lockout-concurrency-regressions.php` |
-| LDAP dispatch and result isolation | `ldap-regressions.php` |
+| Other LDAP transport, LDAP dispatch and result isolation | `ldap-regressions.php` |
+| Core LDAP adapter contract, safeguards and legacy/current cleanup | `ldap-core-regressions.php` |
 | Retired settings and migration retries | `settings-migration-regressions.php` |
 
 For runtime changes, run the focused suite while developing and all standalone suites before completion. Add behavioral assertions for the failure being fixed, not just assertions that reproduce the implementation. Where useful, temporarily reintroduce the defect in an isolated copy and verify the new test fails. Do not mutate the live checkout for that check.
@@ -78,6 +79,8 @@ For documentation-only work, validate links and configuration text/structure as 
 Follow the [disposable LDAP test instructions](../tests/fixtures/ldap-live/README.md). The container runs OpenLDAP and PHP's real LDAP extension with synthetic accounts and StartTLS. It publishes no ports; package installation needs network access. Do not run its package-installation/setup script directly on the host.
 
 Run this test after LDAP transport, encoding, mapping or group changes. The REDCap fallback database query is simulated, and the directory is OpenLDAP. Passing it does not certify Active Directory, organizational directory policy, production certificates or the deployment's configured REDCap LDAP chain. Report those limits explicitly.
+
+For core LDAP adapter changes, also export both installed-driver revisions from a licensed local REDCap checkout and run `ldap-core-integration.php` through the container setup. The [fixture instructions](../tests/fixtures/ldap-live/README.md) cover the default 16.0.0 and 17.5.6 tags and optional additional versions. Keep exported REDCap source outside this repository.
 
 ## REDCap integration and browser acceptance
 

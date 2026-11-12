@@ -20,7 +20,7 @@ Authentication can use project-configured Custom credentials, REDCap's user tabl
 
 ## Requirements
 
-Survey Auth requires External Modules Framework version 16 or later. Participant browsers must allow JavaScript.
+Survey Auth requires REDCap 16.0.0 or later and External Modules Framework version 16 or later. Participant browsers must allow JavaScript.
 
 ## Installation
 
@@ -67,7 +67,7 @@ Install Survey Auth through REDCap's External Modules Manager, either from the C
 
   - **Table:** REDCap verifies the username and password against its user table. Suspended accounts are denied.
 
-  - **LDAP:** Uses the LDAP directory configuration supplied by REDCap. If REDCap has more than one configured LDAP directory, they are tried in REDCap's configured order.
+  - **LDAP:** Uses REDCap's installed LDAP authentication driver and directory configuration, without creating a REDCap staff-login session or requiring a REDCap account. Connection defaults, host/URL precedence, searches, password binds, and group checks follow the installed driver. If REDCap has more than one configured LDAP directory, they are tried in REDCap's configured order. Survey Auth retains two safeguards: empty or NUL-containing credentials are denied, and incompatible protocol/TLS settings are rejected before connecting. REDCap's default LDAP protocol is v2; explicitly set `version` to 3 when requesting StartTLS. Survey Auth also verifies that LDAP v3 was applied before TLS or a bind. Installed-core limitations, including older base-DN discovery and `try_all` behavior, are described in the [implementation guide](docs/implementation.md#differences-that-constrain-the-adapter).
 
   - **Other LDAP:** Only REDCap superusers can enable or configure this method because its JSON can contain service-account credentials and controls outbound directory connections. Provide any number of LDAP connection info as a JSON array. The order of processing will be as provided in the array. Use the connection and search parameters shown below, adapting the server, service account, base DN, and filters to your directory. The LDAP extension must be available in PHP.
 
@@ -91,19 +91,23 @@ Install Survey Auth through REDCap's External Modules Manager, either from the C
     ]
     ```
 
-    This example uses LDAP v3 with StartTLS; the server must support it and PHP must trust its certificate. LDAP v3 is also the default when `version` is omitted. If `start_tls` is true, an incompatible protocol setting or failed TLS negotiation rejects authentication before any bind credentials are sent. Use JSON booleans for `start_tls`.
+    This Other LDAP example uses LDAP v3 with StartTLS; the server must support it and PHP must trust its certificate. For Other LDAP, v3 is also the default when `version` is omitted. If `start_tls` is true, an incompatible protocol setting or failed TLS negotiation rejects authentication before any bind credentials are sent. Use JSON booleans for `start_tls`.
 
-  - **LDAP connection settings (LDAP and Other LDAP):** Survey Auth honors the separate `port` setting unless the `url` already contains an explicit port, which takes precedence. The module's default `port` is 389; for LDAPS, explicitly set `port` to 636 or include `:636` in the URL.
+  - **LDAP connection settings (LDAP and Other LDAP):** For **LDAP**, Survey Auth follows REDCap's installed driver: a nonempty `host` takes precedence over `url`, and the separate `port` setting is ignored. Put a custom port directly in the effective URL; otherwise its scheme selects the default, 389 for `ldap://` or 636 for `ldaps://`.
 
-    REDCap's regular login has long ignored the separate `port` setting when `url` is populated; this behavior is present in REDCap 6.10.0, the earliest version checked. Before REDCap 15.5.5, the separate port was used only when `url` was empty and the connection used `host` instead. Since REDCap 15.5.5, the LDAP driver ignores the separate `port` setting entirely, taking the port from the URL or the scheme's default instead. Consequently, a successful REDCap login does not prove that the separate port is correct. For example, with `url="ldap://ldap.example.org"` and `port=636`, REDCap connects to port 389 while Survey Auth connects to port 636.
+    REDCap's regular login has long ignored the separate `port` setting when `url` is populated; this behavior is present in REDCap 6.10.0, the earliest version checked. Before REDCap 15.5.5, the separate port was used only when `url` was empty and the connection used `host` instead. Since REDCap 15.5.5, the LDAP driver ignores the separate `port` setting entirely. With `url="ldap://ldap.example.org"`, no `host` override, and `port=636`, both REDCap login and Survey Auth's LDAP option therefore use port 389.
+
+    **Other LDAP** keeps Survey Auth's independent implementation: an explicit port in `url` takes precedence, otherwise the separate `port` setting is honored. Its default `port` is 389, including for `ldaps://` URLs; explicitly set 636 or include `:636` in the URL for conventional LDAPS. In the preceding example, Other LDAP would use port 636 and encounter a protocol mismatch on a conventional LDAPS listener.
 
     Use matching scheme, port, and TLS settings (the ports below are conventional; use your directory's actual listener ports):
 
     | Connection | `url` | `port` | `version` | `start_tls` | Encryption |
     | --- | --- | --- | --- | --- | --- |
-    | LDAP | `ldap://ldap.example.org` | 389 | 3 | `false` | No TLS encryption |
-    | LDAP with StartTLS | `ldap://ldap.example.org` | 389 | 3 | `true` | TLS negotiated before binding |
-    | LDAPS | `ldaps://ldap.example.org` | 636 | 3 | `false` | TLS established immediately on connection |
+    | LDAP | `ldap://ldap.example.org:389` | 389 | 3 | `false` | No TLS encryption |
+    | LDAP with StartTLS | `ldap://ldap.example.org:389` | 389 | 3 | `true` | TLS negotiated before binding |
+    | LDAPS | `ldaps://ldap.example.org:636` | 636 | 3 | `false` | TLS established immediately on connection |
+
+    Explicit URL ports make these examples work for both LDAP methods. The separate `port` column is relevant only to Other LDAP when the URL has no explicit port.
 
     Setting `port=636` alone does not enable TLS. `ldap://` on a conventional LDAPS listener at port 636 causes a protocol mismatch; StartTLS also uses the LDAP listener, normally on port 389. For StartTLS and LDAPS, PHP must trust the server certificate and the hostname or IP address in the URL must match it. See [OpenLDAP's TLS documentation](https://www.openldap.org/faq/data/cache/185.html).
 

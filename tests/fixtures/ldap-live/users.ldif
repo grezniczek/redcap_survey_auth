@@ -31,3 +31,19 @@ dn: cn=allowed,dc=test
 objectClass: groupOfUniqueNames
 cn: allowed
 uniqueMember: uid=alice,dc=test
+
+dn: uid=retry-first,dc=test
+objectClass: inetOrgPerson
+uid: retry-first
+cn: Retry User
+sn: First
+mail: rejected@example.test
+userPassword: different-password
+
+dn: uid=retry-second,dc=test
+objectClass: inetOrgPerson
+uid: retry-second
+cn: Retry User
+sn: Second
+mail: accepted@example.test
+userPassword: fixture-password

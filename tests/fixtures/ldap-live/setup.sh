@@ -2,7 +2,7 @@
 set -eu
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends slapd ldap-utils php-cli php-ldap openssl ca-certificates > /tmp/ldap-install.log 2>&1
+apt-get install -y -qq --no-install-recommends slapd ldap-utils php-cli php-ldap php-mbstring openssl ca-certificates > /tmp/ldap-install.log 2>&1
 mkdir -p /tmp/ldap-data
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout /tmp/ldap.key -out /tmp/ldap.crt -subj /CN=localhost -addext subjectAltName=DNS:localhost,IP:127.0.0.1 > /tmp/ldap-cert.log 2>&1
 cat > /tmp/slapd.conf <<'EOF'
@@ -24,7 +24,14 @@ directory /tmp/ldap-data
 access to * by * read
 EOF
 slapadd -f /tmp/slapd.conf -l /workspace/tests/fixtures/ldap-live/users.ldif
-slapd -f /tmp/slapd.conf -h 'ldap://127.0.0.1:1389/'
+slapd -f /tmp/slapd.conf -h 'ldap://127.0.0.1:1389/ ldap://127.0.0.1:389/ ldaps://127.0.0.1:636/'
 export LDAPTLS_CACERT=/tmp/ldap.crt
 ldapwhoami -x -ZZ -H ldap://127.0.0.1:1389 -D cn=admin,dc=test -w fixture-admin
 php /workspace/tests/ldap-integration.php
+if [ -d /core ]; then
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -keyout /tmp/untrusted.key -out /tmp/untrusted.crt -subj /CN=untrusted > /tmp/untrusted-cert.log 2>&1
+    for core_version in /core/*; do
+        php /workspace/tests/ldap-core-integration.php "$core_version"
+        LDAPTLS_CACERT=/tmp/untrusted.crt php /workspace/tests/ldap-core-integration.php "$core_version" untrusted
+    done
+fi

@@ -6,6 +6,7 @@ namespace DE\RUB\SurveyAuthExternalModule {
 namespace {
 if (extension_loaded('ldap')) throw new RuntimeException('Run this isolated transport test with php -n.');
 require __DIR__.'/session-regressions.php';
+require __DIR__.'/fixtures/ldap/core-driver-contract.php';
 define('APP_PATH_WEBTOOLS',__DIR__.'/fixtures/');
 define('LDAP_OPT_DIAGNOSTIC_MESSAGE',50);
 define('LDAP_OPT_PROTOCOL_VERSION',17); define('LDAP_OPT_REFERRALS',8);
@@ -59,6 +60,18 @@ class Authentication {
 }
 function config($host,$group='') { return ['url'=>'ldap://'.$host,'host'=>$host,'port'=>389,'basedn'=>'dc=test','group'=>$group]; }
 function entry($dn,$name='',$email='') { return ['dn'=>$dn,'attrs'=>['cn'=>['count'=>1,0=>$name],'mail'=>['count'=>1,0=>$email]]]; }
+// Only the backend dispatcher uses this scripted core contract here. Transport tests below
+// exercise the unchanged Other LDAP implementation; real core drivers have a separate suite.
+Auth_Container_LDAP::$authenticate=function($driver,$username,$password) {
+    $driver->options['url'].=':389';
+    $driver->conn_id=ldap_connect($driver->options['url']);
+    $server=FakeLDAP::$servers[$driver->options['url']];
+    $entry=$server['entries'][0] ?? null;
+    if (!$entry) return false;
+    foreach ($entry['attrs'] as $key=>$values) $driver->_auth_obj->setAuthData($key,$values[0]);
+    $driver->_auth_obj->log('Bind as '.$entry['dn']);
+    return $password==='correct' && in_array($entry['dn'],$server['accept'],true);
+};
 function runBackends() {
     global $module;
     FakeLDAP::reset();$r=['success'=>false,'log_error'=>[]];
@@ -92,11 +105,12 @@ FakeLDAP::$redcapConfigs=[config('bad'),config('good'),config('late')];
 FakeLDAP::$servers['ldap://bad:389']=['entries'=>[entry('bad','Wrong','wrong@example.test')],'accept'=>[]];
 FakeLDAP::$servers['ldap://good:389']=['entries'=>[entry('good')],'accept'=>['good']];
 $r=runBackends();check($r['success'] && $r['fullname']==='' && $r['email']==='' && FakeLDAP::$calls===['ldap://bad:389','ldap://good:389'],'Rejected directory attributes cannot leak and first accepted directory stops iteration');
-FakeLDAP::$redcapConfigs=[config('multi')];
+$settings->useLDAP=false;$settings->useOtherLDAP=true;
+$settings->otherLDAPConfigs=[config('multi')];
 FakeLDAP::$servers['ldap://multi:389']=['entries'=>[entry('bad','Wrong','wrong@example.test'),entry('good')],'accept'=>['good'],
     'read'=>[entry('unrelated','Unrelated','unrelated@example.test'),entry('good','Accepted','accepted@example.test')]];
 $r=runBackends();check($r['success'] && $r['fullname']==='Accepted' && $r['email']==='accepted@example.test','Failed entry can advance safely; user-bound attributes must match the accepted DN');
-FakeLDAP::$redcapConfigs=[config('multi','allowed')];
+$settings->otherLDAPConfigs=[config('multi','allowed')];
 $r=runBackends();check(!$r['success'] && !isset($r['email']),'Group rejection publishes no identity and releases group results');
 $settings->fallbackToTableUserInfo=true;
 $module->framework=new class {
@@ -106,9 +120,9 @@ $module->framework=new class {
         return new class { public function fetch_assoc() { return ['user_email'=>'fallback@example.test','user_firstname'=>'Fallback','user_lastname'=>'User']; } };
     }
 };
-FakeLDAP::$redcapConfigs=[config('bad')];
+$settings->otherLDAPConfigs=[config('bad')];
 $r=runBackends();check(!$r['success'] && !$module->framework->queries,'Table attributes are not queried for a failed LDAP bind');
-FakeLDAP::$redcapConfigs=[config('good')];
+$settings->otherLDAPConfigs=[config('good')];
 $r=runBackends();check($r['success'] && $r['fullname']==='Fallback User' && $r['email']==='fallback@example.test' && $module->framework->queries===[['user']],'Fallback uses the authenticated username and fills missing attributes');
 $settings->fallbackToTableUserInfo=false;
 $r=['success'=>true,'email'=>'stale','fullname'=>'stale','log_error'=>[]];FakeLDAP::reset();
