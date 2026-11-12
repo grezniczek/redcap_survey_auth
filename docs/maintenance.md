@@ -56,7 +56,7 @@ These suites do not need a REDCap bootstrap, database, credentials or web server
 | Table login and grant revocation | `table-account-regressions.php` |
 | Lockout expiry and synchronization | `lockout-regressions.php`, `lockout-storage-regressions.php`, `lockout-concurrency-regressions.php` |
 | Other LDAP transport, LDAP dispatch and result isolation | `ldap-regressions.php` |
-| Core LDAP adapter contract, safeguards and legacy/current cleanup | `ldap-core-regressions.php` |
+| Core LDAP adapter contract, credential/TLS parity and legacy/current cleanup | `ldap-core-regressions.php` |
 | Retired settings and migration retries | `settings-migration-regressions.php` |
 
 For runtime changes, run the focused suite while developing and all standalone suites before completion. Add behavioral assertions for the failure being fixed, not just assertions that reproduce the implementation. Where useful, temporarily reintroduce the defect in an isolated copy and verify the new test fails. Do not mutate the live checkout for that check.

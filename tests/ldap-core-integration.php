@@ -57,7 +57,7 @@ foreach (['AUTH','LDAP'] as $format) {
     $r=attempt('alice','fixture-password',['attrformat'=>$format]);
     check($r['success'] && $r['email']==='alice@example.test' && $r['fullname']==='Alice Directory','Accepted identity from '.$format.' attribute format');
 }
-foreach ([['alice','wrong'],['alice',''],['*','fixture-password'],['alice',"fixture-\0password"],["ali\0ce",'fixture-password']] as [$user,$password]) {
+foreach ([['alice','wrong'],['alice',''],['*','fixture-password']] as [$user,$password]) {
     $r=attempt($user,$password);
     check(!$r['success'] && !$r['log_error'] && !isset($r['email']),'Invalid credentials denied without technical errors or identity');
 }
@@ -69,12 +69,43 @@ check(attempt('retry-second')['success'],'The later matching entry has independe
 check(attempt('alice','fixture-password',['group'=>'allowed'])['success'],'Group member accepted');
 $r=attempt('jörg','fixture-password',['group'=>'allowed']);
 check(!$r['success'] && !$r['log_error'] && !isset($r['email']),'Group denial discards staged identity');
-foreach ([null,2,'2','invalid'] as $version) {
-    $r=attempt('alice','fixture-password',['version'=>$version]);
-    $details=json_decode(substr($r['log_error'][0],strlen('REDCap LDAP error: ')),true,512,JSON_THROW_ON_ERROR);
-    check(!$r['success'] && $details['stage']==='configuration' && $details['endpoint']===null,
-        'Incompatible or omitted StartTLS protocol rejected before connection');
+// Compare Survey Auth with direct calls to the same unmodified core driver.
+class CoreAuthDataCollector {
+    function log($message,$level=7) { return true; }
+    function setAuthData($name,$value,$overwrite=true) {}
 }
+function coreAccepts($username,$password,$changes): bool {
+    global $base;
+    $config=array_replace($base,$changes);
+    if (array_key_exists('version',$changes) && $changes['version']===null) unset($config['version']);
+    $driver=new Auth_Container_LDAP($config); $driver->_auth_obj=new CoreAuthDataCollector();
+    set_error_handler(static fn()=>true,E_WARNING);
+    try { return $driver->fetchData($username,$password)===true; }
+    catch (Throwable $error) { return false; }
+    finally {
+        if ($driver->conn_id!==false && $driver->conn_id!==null) {
+            try { @ldap_unbind($driver->conn_id); } catch (Throwable $ignored) {}
+        }
+        restore_error_handler();
+    }
+}
+foreach ([
+    ['alice',"fixture-\0password",[]], ["ali\0ce",'fixture-password',[]], ['', 'fixture-password',[]],
+    ['alice','',[]], ['alice',"\0",[]],
+    ['alice','fixture-password',['version'=>null]], ['alice','fixture-password',['version'=>2]],
+    ['alice','fixture-password',['version'=>'2']], ['alice','fixture-password',['version'=>'invalid']],
+    ['alice','fixture-password',['start_tls'=>1]], ['alice','fixture-password',['start_tls'=>'false']],
+    ['alice','fixture-password',['start_tls'=>false]],
+] as [$username,$password,$changes]) {
+    $accepted=coreAccepts($username,$password,$changes);
+    $r=attempt($username,$password,$changes);
+    check($r['success']===$accepted,'Credential and TLS outcome matches the installed core driver');
+}
+check(attempt('alice',"fixture-\0password")['success'],'Core password normalization is preserved');
+$r=attempt('alice','fixture-password',['version'=>2]);
+$details=json_decode(substr($r['log_error'][0],strlen('REDCap LDAP error: ')),true,512,JSON_THROW_ON_ERROR);
+check(!$r['success'] && $details['stage']==='service bind' && $details['endpoint']!==null,
+    'StartTLS with LDAP v2 reaches core service bind instead of adapter configuration rejection');
 $r=attempt('alice','fixture-password',['bindpw'=>'wrong']);
 check(!$r['success'] && count($r['log_error'])===1 && str_contains($r['log_error'][0],'service bind'),
     'PEAR service-bind error is technical failure, never truthy success');

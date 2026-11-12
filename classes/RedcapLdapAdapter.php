@@ -23,8 +23,8 @@ class RedcapLdapAdapter
     /** Returns only mapped identity data, or null for an ordinary denial. */
     public function authenticate(string $username, string $password): ?array
     {
-        if ($username === '' || $password === '' || str_contains($username, "\0") || str_contains($password, "\0")) return null;
-        ($this->rememberSecrets)([$username, $password]);
+        // Core may strip NUL bytes before binding. Redact both forms without changing its input.
+        ($this->rememberSecrets)([$username, $password, str_replace("\0", '', $password)]);
         foreach (['binddn', 'bindpw'] as $key) {
             if (is_scalar($this->config[$key] ?? null)) ($this->rememberSecrets)([(string)$this->config[$key]]);
         }
@@ -49,11 +49,6 @@ class RedcapLdapAdapter
             $this->loadDriver();
             $this->driver = new \Auth_Container_LDAP($this->config);
             $this->driver->_auth_obj = $this;
-            $options = $this->driver->options;
-            if (!in_array($options['version'], [2, 3, '2', '3'], true) || !is_bool($options['start_tls']) ||
-                ($options['start_tls'] && (int)$options['version'] !== 3)) {
-                throw new \RuntimeException('Invalid REDCap LDAP protocol/TLS configuration; StartTLS requires explicit LDAP v3.');
-            }
             $accepted = $this->driver->fetchData($username, $password);
             if ($accepted !== true) {
                 if (\PEAR::isError($accepted)) throw new \RuntimeException($accepted->getMessage(), (int)$accepted->getCode());
@@ -146,15 +141,6 @@ class RedcapLdapAdapter
             $this->candidateAttributes = $this->attributes;
             $this->attributes = [];
             $this->hasCandidate = true;
-        }
-        // Core ignores ldap_set_option()'s return value. Verify v3 before TLS or any bind.
-        if (in_array($message, ['Starting TLS session', 'Binding with credentials', 'Binding anonymously'], true) &&
-            (int)$this->driver->options['version'] === 3) {
-            $version = null;
-            if (!@ldap_get_option($this->driver->conn_id, LDAP_OPT_PROTOCOL_VERSION, $version) || (int)$version !== 3) {
-                $this->details['stage'] = 'protocol version';
-                throw new \RuntimeException('Could not verify LDAP v3 before binding.');
-            }
         }
         if (in_array($message, ['Bind failed', 'Could not start TLS session', 'NOT authenticated!',
             'User not found', 'Auth_Container_LDAP::_disconnect() called.'], true)) $this->captureConnection();

@@ -970,7 +970,6 @@ class SurveyAuthExternalModule extends AbstractExternalModule {
     }
 
     private function authenticateLDAP($username, $password, &$result) {
-        if ($username === '' || $password === '' || str_contains($username, "\0") || str_contains($password, "\0")) return;
         include APP_PATH_WEBTOOLS . 'ldap/ldap_config.php';
         $configs = isset($GLOBALS["ldapdsn"]) ? $GLOBALS["ldapdsn"] : array();
         if (!is_array($configs)) throw new \RuntimeException('Invalid REDCap LDAP configurations.');

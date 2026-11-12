@@ -20,7 +20,20 @@ Authentication can use project-configured Custom credentials, REDCap's user tabl
 
 ## Requirements
 
-Survey Auth requires REDCap 16.0.0 or later and External Modules Framework version 16 or later. Participant browsers must allow JavaScript.
+**Survey Auth 2.4.0 and later require REDCap 16.0.0 or later.** External Modules Framework version 16 or later is also required. Participant browsers must allow JavaScript.
+
+## Upgrading to 2.4.0
+
+The **LDAP** option now uses REDCap's installed LDAP driver. Review REDCap's LDAP configuration before upgrading because this changes Survey Auth's previous connection defaults and behavior:
+
+- A nonempty `host` takes precedence over `url`. The separate `port` setting is ignored; put a custom port directly in the effective URL. For example, `url="ldap://ldap.example.org"` with no `host` override and `port=636` now uses port 389. Use `ldaps://ldap.example.org:636` for conventional LDAPS.
+- The default LDAP protocol changes from v3 to the core driver's v2 default. For StartTLS, explicitly set `version` to 3 and `start_tls` to `true`. The core driver skips StartTLS when `version` is omitted or set to 2, even if `start_tls` is true; Survey Auth follows that behavior. For LDAPS, use `start_tls=false`; PHP must trust the server certificate for either TLS mode. See the [connection settings and examples](#configuration).
+- Check that REDCap's LDAP configuration explicitly requests the attributes used by the module's name/email mappings, for example `attributes => ['mail', 'givenName', 'sn']`. The core default requests no extra attributes. Include any other attributes used by your configured mappings.
+- Searches, group checks, and driver limitations now follow the installed REDCap driver. See [LDAP driver compatibility](#ldap-driver-compatibility) below, including older base-DN discovery and `try_all` limitations. Credential handling and TLS negotiation follow the installed driver without additional Survey Auth restrictions.
+
+**Other LDAP is unchanged:** it continues to honor the separate port when the URL has no explicit port and defaults to LDAP v3.
+
+Technical authentication and authorization errors are now always recorded in the External Module logs, even when authentication-attempt logging is disabled. Sanitized diagnostics fall back to the PHP error log if module logging fails. Survey, dashboard, and report attempt logs mask usernames longer than three characters, including successful logins; usernames of up to three characters remain visible in full.
 
 ## Installation
 
@@ -67,7 +80,7 @@ Install Survey Auth through REDCap's External Modules Manager, either from the C
 
   - **Table:** REDCap verifies the username and password against its user table. Suspended accounts are denied.
 
-  - **LDAP:** Uses REDCap's installed LDAP authentication driver and directory configuration, without creating a REDCap staff-login session or requiring a REDCap account. Connection defaults, host/URL precedence, searches, password binds, and group checks follow the installed driver. If REDCap has more than one configured LDAP directory, they are tried in REDCap's configured order. Survey Auth retains two safeguards: empty or NUL-containing credentials are denied, and incompatible protocol/TLS settings are rejected before connecting. REDCap's default LDAP protocol is v2; explicitly set `version` to 3 when requesting StartTLS. Survey Auth also verifies that LDAP v3 was applied before TLS or a bind. Installed-core limitations, including older base-DN discovery and `try_all` behavior, are described in the [implementation guide](docs/implementation.md#differences-that-constrain-the-adapter).
+  - **LDAP:** Uses REDCap's installed LDAP authentication driver and directory configuration, without creating a REDCap staff-login session or requiring a REDCap account. Connection defaults, host/URL precedence, searches, password binds, and group checks follow the installed driver. If REDCap has more than one configured LDAP directory, they are tried in REDCap's configured order. Credential handling, protocol options, and TLS negotiation are delegated without additional Survey Auth restrictions. REDCap's default LDAP protocol is v2; explicitly set `version` to 3 to enable StartTLS. See [LDAP driver compatibility](#ldap-driver-compatibility) for inherited limitations and configuration guidance.
 
   - **Other LDAP:** Only REDCap superusers can enable or configure this method because its JSON can contain service-account credentials and controls outbound directory connections. Provide any number of LDAP connection info as a JSON array. The order of processing will be as provided in the array. Use the connection and search parameters shown below, adapting the server, service account, base DN, and filters to your directory. The LDAP extension must be available in PHP.
 
@@ -124,6 +137,22 @@ Install Survey Auth through REDCap's External Modules Manager, either from the C
 - **Public Dashboard Access Denied Message:** Allows a custom plain-text message when a public dashboard is configured to deny access from the external survey endpoint. Failed dashboard logins use the Fail message instead.
 
 - **Public Report Access Denied Message:** Allows a custom plain-text message when a public report is configured to deny access from the external survey endpoint. Failed report logins use the Fail message instead.
+
+### LDAP driver compatibility
+
+The **LDAP** option inherits the behavior of the installed REDCap driver. The following observations cover both driver revisions found in REDCap 16.0.0 through 17.5.11:
+
+- **Set an explicit search base on older versions:** In REDCap 16.0.0 through 17.5.5 with PHP 8.1 or later, automatic base-DN discovery fails. Set `basedn` explicitly in REDCap's LDAP configuration. These versions also repeat connection setup during authentication and group checks. REDCap 17.5.6 recognizes PHP's LDAP connection objects and supports automatic base-DN discovery.
+- **Use a search that identifies one account:** In both inspected revisions, `try_all=true` fails to reach a later matching account after the first account rejects the password. Configure `userattr` and `userfilter` to identify a unique account; do not rely on retrying multiple matching entries.
+- **Check group-search permissions:** Group checks follow the installed driver. From REDCap 17.5.6, the driver explicitly restores the configured search identity (service account or anonymous bind) before searching for membership. That identity must have permission to read the required group information.
+
+Survey Auth delegates credential handling and TLS decisions to the installed core driver. In the inspected revisions, core strips NUL bytes from passwords before binding and skips StartTLS when the protocol version is omitted or set to 2, even if `start_tls=true`. To enable StartTLS, set `version=3` and `start_tls=true` in REDCap's LDAP configuration. Survey Auth adds no credential or TLS rejection rules to this path. It retains sanitized diagnostics and survey-session isolation.
+
+Only a successful core authentication result can publish mapped name/email attributes; both core attribute formats, `AUTH` and `LDAP`, are supported. Optional user-table fallback runs only after successful LDAP authentication.
+
+These limitations apply to **LDAP**. **Other LDAP** retains its independent implementation, including its own base-DN discovery and iteration over matching entries.
+
+Compatibility checks used both core driver revisions with disposable OpenLDAP and PHP 8.2, including StartTLS, LDAPS, certificate rejection, groups, attribute mapping, and session isolation. They do not establish compatibility with every PHP version, Active Directory policy, deployment certificate, or site's executable LDAP configuration; verify the configuration used by your installation.
 
 ### @SURVEY-AUTH Action Tag
 

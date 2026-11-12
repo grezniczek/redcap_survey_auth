@@ -104,29 +104,43 @@ foreach ([false,true] as $modern) {
     $details=json_decode(substr($r['log_error'][0],strlen('REDCap LDAP error: ')),true,512,JSON_THROW_ON_ERROR);
     check($details['ldap_errno']===81 && $details['endpoint']==='ldap://fixture.test:389','Closed-driver errors retain native diagnostics and effective endpoint');
 }
-foreach (['',"fixture-\0password"] as $password) {
-    $before=count(Auth_Container_LDAP::$constructed); $r=attempt($config,'fixture-user',$password);
-    check(!$r['success'] && count(Auth_Container_LDAP::$constructed)===$before,'Empty/NUL password denied before driver construction');
+// The dispatcher and adapter must pass raw credentials and configuration to core.
+foreach ([['', ''], ['fixture-user', "fixture-\0password"], ["fixture-\0user", 'fixture-password']] as [$username,$password]) {
+    $seen=null;
+    Auth_Container_LDAP::$authenticate=function($driver,$user,$pass) use (&$seen) {
+        $seen=[$user,$pass]; return false;
+    };
+    FakeLDAP::$redcapConfigs=$config; $r=['success'=>false,'log_error'=>[]];
+    (new ReflectionMethod($module,'authenticateLDAP'))->invokeArgs($module,[$username,$password,&$r]);
+    check($seen===[$username,$password] && !$r['success'] && !$r['log_error'],
+        'Empty/NUL credentials reach the installed driver unchanged');
 }
-foreach ([['version'=>2],['version'=>'invalid'],['version'=>null],['start_tls'=>'false']] as $change) {
+foreach ([['version'=>2],['version'=>'invalid'],['version'=>null],['start_tls'=>'false'],['start_tls'=>1]] as $change) {
     $cfg=array_replace($config,$change); if ($cfg['version']===null) unset($cfg['version']);
+    Auth_Container_LDAP::$authenticate=function($driver) { connectDriver($driver); candidate($driver); return true; };
     $r=attempt($cfg);
-    check(!$r['success'] && str_contains($r['log_error'][0],'configuration'),'Invalid or omitted TLS protocol fails before fetchData');
+    check($r['success'] && Auth_Container_LDAP::$constructed[array_key_last(Auth_Container_LDAP::$constructed)]===$cfg,
+        'Protocol and TLS options are delegated without additional adapter validation');
 }
 foreach ([false,true] as $tls) {
     Auth_Container_LDAP::$authenticate=function($driver) use ($tls) {
         connectDriver($driver,2);
         $driver->_auth_obj->log($tls ? 'Starting TLS session' : 'Binding with credentials');
-        throw new RuntimeException('Protocol guard failed to stop binding');
+        candidate($driver); return true;
     };
-    $r=attempt(array_replace($config,['start_tls'=>$tls]));
-    check(!$r['success'] && str_contains($r['log_error'][0],'Could not verify LDAP v3'),
-        'Unapplied protocol option cannot reach TLS or a bind');
+    check(attempt(array_replace($config,['start_tls'=>$tls]))['success'],
+        'Adapter does not add protocol verification to core TLS or bind callbacks');
 }
 CoreFixture::$failProtocolRead=true;
-Auth_Container_LDAP::$authenticate=function($driver) { connectDriver($driver); $driver->_auth_obj->log('Binding with credentials'); return true; };
+Auth_Container_LDAP::$authenticate=function($driver) { connectDriver($driver); $driver->_auth_obj->log('Binding with credentials'); candidate($driver); return true; };
 $r=attempt($config); CoreFixture::$failProtocolRead=false;
-check(!$r['success'] && str_contains($r['log_error'][0],'Could not verify LDAP v3'),'Protocol read failure prevents binding');
+check($r['success'],'Adapter does not reject core acceptance when protocol cannot be read');
+Auth_Container_LDAP::$authenticate=function($driver,$username,$password) {
+    connectDriver($driver); throw new RuntimeException('credential echo '.$password.' '.str_replace("\0", '', $password));
+};
+$r=attempt($config,'fixture-user',"unique-\0normalized-secret");
+check(!$r['success'] && !str_contains($r['log_error'][0],'normalized-secret'),
+    'Diagnostics redact both the raw password and the form normalized by core');
 Auth_Container_LDAP::$authenticate=function($driver) {
     connectDriver($driver); candidate($driver,'Rejected','rejected@example.test');
     // A later candidate has no mapped attributes. The first candidate must not survive.
@@ -174,5 +188,5 @@ check($module->framework->logs[0][1]['project_id']===87,'Adapter diagnostics ret
 check([$_SESSION,$_POST,$_COOKIE]===$state,'No staff-session or request side effects');
 $cfg=json_decode(file_get_contents(dirname(__DIR__).'/config.json'),true,512,JSON_THROW_ON_ERROR);
 check($cfg['compatibility']['redcap-version-min']==='16.0.0','REDCap 16.0.0 minimum is declared');
-echo "Passed core LDAP adapter strict outcomes, legacy/current cleanup, attribute isolation, protocol/credential safeguards, diagnostics, and session isolation regressions.\n";
+echo "Passed core LDAP adapter strict outcomes, legacy/current cleanup, attribute isolation, core credential/TLS parity, diagnostics, and session isolation regressions.\n";
 }
