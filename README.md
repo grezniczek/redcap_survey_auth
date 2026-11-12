@@ -93,6 +93,20 @@ Install Survey Auth through REDCap's External Modules Manager, either from the C
 
     This example uses LDAP v3 with StartTLS; the server must support it and PHP must trust its certificate. LDAP v3 is also the default when `version` is omitted. If `start_tls` is true, an incompatible protocol setting or failed TLS negotiation rejects authentication before any bind credentials are sent. Use JSON booleans for `start_tls`.
 
+  - **LDAP connection settings (LDAP and Other LDAP):** Survey Auth honors the separate `port` setting unless the `url` already contains an explicit port, which takes precedence. The module's default `port` is 389; for LDAPS, explicitly set `port` to 636 or include `:636` in the URL.
+
+    Depending on its version, REDCap's regular login may ignore the separate `port` setting and use the port embedded in the URL or the scheme's default instead. Consequently, a successful REDCap login does not prove that the separate port is correct. For example, with `url="ldap://ldap.example.org"` and `port=636`, REDCap may connect to port 389 while Survey Auth connects to port 636.
+
+    Use matching scheme, port, and TLS settings (the ports below are conventional; use your directory's actual listener ports):
+
+    | Connection | `url` | `port` | `version` | `start_tls` | Encryption |
+    | --- | --- | --- | --- | --- | --- |
+    | LDAP | `ldap://ldap.example.org` | 389 | 3 | `false` | No TLS encryption |
+    | LDAP with StartTLS | `ldap://ldap.example.org` | 389 | 3 | `true` | TLS negotiated before binding |
+    | LDAPS | `ldaps://ldap.example.org` | 636 | 3 | `false` | TLS established immediately on connection |
+
+    Setting `port=636` alone does not enable TLS. `ldap://` on a conventional LDAPS listener at port 636 causes a protocol mismatch; StartTLS also uses the LDAP listener, normally on port 389. For StartTLS and LDAPS, PHP must trust the server certificate and the hostname or IP address in the URL must match it. See [OpenLDAP's TLS documentation](https://www.openldap.org/faq/data/cache/185.html).
+
   - **LDAP Attribute mappings:** Available when either LDAP method is enabled. Enter comma-separated attribute names for email, full name, first name, and last name. Email defaults to `email,mail`, first name to `givenName`, last name to `sn`, and full name has no default. The module uses a full-name value when present; otherwise it combines first and last name.
 
   - **Fall back to retrieving user information from REDCap's user table when no values are obtained from LDAP attributes:** After successful LDAP authentication, any missing email or full name is filled from the REDCap user table for the submitted username. Values already obtained from LDAP are retained. This does not authenticate against the REDCap table or create a REDCap account.
